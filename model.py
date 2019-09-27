@@ -2,7 +2,7 @@ from torch import nn
 import torch
 import numpy as np
 
-class Generator(nn.Module):
+class GanartGenerator(nn.Module):
     def __init__(self, input_size, image_shape, rlslope=0.2):
         super().__init__()
 
@@ -23,12 +23,11 @@ class Generator(nn.Module):
 
     def forward(self, z):
         img = self.model(z)
-        print(img)
         img = img.view(img.shape[0], *self.image_shape)
         return img
 
 
-class Discriminator(nn.Module):
+class GanartDiscriminator(nn.Module):
     def __init__(self, image_shape, rlslope=0.2):
         super().__init__()
 
@@ -65,7 +64,6 @@ if __name__ == "__main__":
     discriminator = Discriminator(image_shape)
 
     out = discriminator.forward(torch.from_numpy(data.astype(np.float32)))
-    print(out.shape)
     
 
             
