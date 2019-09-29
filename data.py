@@ -13,7 +13,8 @@ class GanartDataSet(torch.utils.data.Dataset):
         return self.ds.shape[0]
 
     def __getitem__(self, index):
-        return self.ds[index]
+        
+        return self.ds[index], 0
 
     def __del__(self):
         self.h5f.close()

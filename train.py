@@ -5,12 +5,18 @@ import skimage.io
 
 from data import GanartDataSet
 from model import GanartGenerator, GanartDiscriminator
+from torch.autograd import Variable
 
-latent_size = 100
+from torchvision.utils import save_image
+
+Tensor = torch.FloatTensor
+
+latent_size = 10
 n_epochs = 100
 img_shape = (256, 256, 3)
-n_critique = 10
-save_interval = 10
+save_interval = 5
+lr = 0.0002
+
 save_path = "/mnt/c/Users/davidf/workspace/ganart/out"
 
 ds = GanartDataSet('/mnt/c/Users/davidf/workspace/ganart/circles.h5')
@@ -21,44 +27,56 @@ generator = GanartGenerator(latent_size, img_shape)
 
 discriminator = GanartDiscriminator(img_shape)
 
-lr = 0.00005
-optimizer_g = torch.optim.RMSprop(generator.parameters(), lr=lr)
-optimizer_d = torch.optim.RMSprop(discriminator.parameters(), lr=lr)
+optimizer_g = torch.optim.Adam(generator.parameters(), lr=lr, betas=(0.5,0.999))
+optimizer_d = torch.optim.Adam(discriminator.parameters(), lr=lr, betas=(0.5,0.999))
+adversarial_loss = torch.nn.BCELoss()
 
 for ni, epoch in enumerate(range(n_epochs)):
-    for bi, real_imgs in enumerate(loader):
-        z = np.random.uniform(0, 1, (real_imgs.shape[0], latent_size)).astype(np.float32)
-        z = torch.autograd.Variable(torch.from_numpy(z))
+    for bi, (imgs,_) in enumerate(loader):
+        # ground truths
+        valid = Variable(Tensor(imgs.size(0),1).fill_(1.0), requires_grad=False)
+        fake = Variable(Tensor(imgs.size(0),1).fill_(0.0), requires_grad=False)
 
-        fake_imgs = generator(z).detach()
+        real_imgs = Variable(imgs.type(Tensor))
 
-        real_val = discriminator(real_imgs)
-        fake_val = discriminator(fake_imgs)
-        
-        loss_d = -torch.mean(real_val) + torch.mean(fake_val)
+        # train generator
+        # ---------------
+        optimizer_g.zero_grad()
 
-        loss_d.backward()
+        # noise input
+        z = Variable(Tensor(np.random.normal(0, 1, (real_imgs.shape[0], latent_size))))
+
+        fake_imgs = generator(z)
+
+        gen_loss = adversarial_loss(discriminator(fake_imgs), valid)
+
+        gen_loss.backward()
+
+        optimizer_g.step()
+
+        # train discriminator
+        # -------------------
+
+        real_vals = discriminator(real_imgs)
+        real_loss = adversarial_loss(real_vals, valid)
+
+        fake_vals = discriminator(fake_imgs.detach())
+        fake_loss = adversarial_loss(fake_vals, fake)
+
+        d_loss = (real_loss + fake_loss) * 0.5
+
+        d_loss.backward()
+
         optimizer_d.step()
-
-        if bi % n_critique == 0:
-            
-            optimizer_g.zero_grad()
-
-            gen_imgs = generator(z)
-            gen_val = discriminator(gen_imgs)
-            loss_g = -torch.mean(gen_val)
-
-            loss_g.backward()
-            optimizer_g.step()
-
+        
         if bi % save_interval == 0:
             print(f'Epoch {ni}, Batch {bi} - saving')
-            save_imgs = gen_imgs.detach().numpy()
-            save_imgs = (np.clip(0,1,save_imgs)*255).astype(np.uint8)
-            
-            for ii in range(save_imgs.shape[0]):
-                fname = os.path.join(save_path, f'image_{ni:04d}_{bi:04d}_{ii:04d}.png')
-                skimage.io.imsave(fname, save_imgs[ii])
+            save_image(fake_imgs.data[:9],
+                       os.path.join(save_path, f'images_{ni:04d}_{bi:04d}.png'),
+                       nrow=3, range=[0,1])
+            save_image(real_imgs.data[:9],
+                       os.path.join(save_path, f'real_images_{ni:04d}_{bi:04d}.png'),
+                       nrow=3, range=[0,1])
                 
             
 
