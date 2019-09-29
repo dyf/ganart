@@ -38,11 +38,11 @@ def gen_circle(shape, n_min, n_max):
 
 def gen_circles(n, shape, n_min, n_max, fname):
     
-    with h5py.File("/mnt/c/Users/davidf/workspace/ganart/circles.h5", "w") as f:
+    with h5py.File(fname, "w") as f:
         ds = f.create_dataset("data", (n,*shape), dtype='float32')
 
         for i in range(n):
-            if i % 10 == 0:
+            if i % 100 == 0:
                 print(f'{i+1}/{n}')
             
             img = gen_circle(shape, n_min, n_max)
@@ -53,7 +53,7 @@ if __name__ == "__main__":
     np.random.seed(0)
 
     gen_circles(10000, (3,256,256), 1, 10,
-                "/mnt/c/Users/davidf/workspace/ganart/circles.h5")
+                "circles.h5")
         
 
 
