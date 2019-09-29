@@ -94,7 +94,60 @@ class GanartDiscriminator(nn.Module):
         val = self.conv_adv_layer(out)
         return val
 
-        
+class GanartAutoencoder(nn.Module):
+    def __init__(self, image_shape, latent_size, rlslope=0.2):
+        super().__init__()
+
+        self.encoder = nn.Sequential(
+            nn.Conv2d(3, 16, 3, 2, 1),
+            nn.LeakyReLU(rlslope, inplace=True),
+            nn.Dropout2d(0.25),
+            nn.Conv2d(16, 32, 3, 2, 1),
+            nn.LeakyReLU(rlslope, inplace=True),
+            nn.Dropout2d(0.25),
+            nn.Conv2d(32, 64, 3, 2, 1),
+            nn.LeakyReLU(rlslope, inplace=True),
+            nn.Dropout2d(0.25),
+            nn.Conv2d(64, 128, 3, 2, 1),
+            nn.LeakyReLU(rlslope, inplace=True),
+            nn.Dropout2d(0.25),            
+        )
+
+        self.latent_layer = nn.Sequential(
+            nn.Linear(32768, latent_size),
+            nn.Sigmoid()
+        )
+
+        self.conv_init_size = image_shape[0] // 4
+
+        self.decoder_input_layer = nn.Sequential(
+            nn.Linear(latent_size, 128 * self.conv_init_size ** 2)            
+        )
+
+        self.decoder = nn.Sequential(            
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(128, 128, 3, stride=1, padding=1),
+            nn.LeakyReLU(rlslope, inplace=True),
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(128, 64, 3, stride=1, padding=1),
+            nn.LeakyReLU(rlslope, inplace=True),
+            nn.Conv2d(64, 3, 3, stride=1, padding=1),
+            nn.Tanh()
+        )
+
+
+    def forward(self, img):
+        #img_flat = img.view(img.shape[0], -1)
+        #return self.model(img_flat)
+
+        encoded = self.encoder(img)
+        encoded_flat = encoded.view(encoded.shape[0], -1)
+        latent = self.latent_layer(encoded_flat)
+        decoder_input = self.decoder_input_layer(latent)
+        decoder_input_square = decoder_input.view(decoder_input.shape[0], 128, self.conv_init_size, self.conv_init_size)
+        decoded = self.decoder(decoder_input_square)
+        return decoded
+    
 
 if __name__ == "__main__":
     import h5py
