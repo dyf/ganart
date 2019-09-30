@@ -3,8 +3,8 @@ import os
 import numpy as np
 import skimage.io
 
-from data import GanartDataSet
-from model import GanartAutoencoder
+from data import GenartDataSet
+from model import GenartAutoencoder
 from torch.autograd import Variable
 
 from torchvision.utils import save_image
@@ -25,11 +25,11 @@ def main():
     device = torch.device("cuda:0" if use_cuda else "cpu")
     #cudnn.benchmark = True
 
-    ds = GanartDataSet(train_data_path)
+    ds = GenartDataSet(train_data_path)
 
     loader = torch.utils.data.DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=0)
 
-    model = GanartAutoencoder(img_shape, latent_size)
+    model = GenartAutoencoder(img_shape, latent_size)
     if use_cuda:
         model.to(device)
 

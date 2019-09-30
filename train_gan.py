@@ -3,8 +3,8 @@ import os
 import numpy as np
 import skimage.io
 
-from data import GanartDataSet
-from model import GanartGenerator, GanartDiscriminator
+from data import GenartDataSet
+from model import GenartGenerator, GenartDiscriminator
 from torch.autograd import Variable
 
 from torchvision.utils import save_image
@@ -17,15 +17,15 @@ img_shape = (256, 256, 3)
 save_interval = 5
 lr = 0.0002
 
-save_path = "/mnt/c/Users/davidf/workspace/ganart/out"
+save_path = "./out"
 
-ds = GanartDataSet('/mnt/c/Users/davidf/workspace/ganart/circles.h5')
+ds = GenartDataSet('./circles.h5')
 
 loader = torch.utils.data.DataLoader(ds, batch_size=10, shuffle=True, num_workers=0)
 
-generator = GanartGenerator(latent_size, img_shape)
+generator = GenartGenerator(latent_size, img_shape)
 
-discriminator = GanartDiscriminator(img_shape)
+discriminator = GenartDiscriminator(img_shape)
 
 optimizer_g = torch.optim.Adam(generator.parameters(), lr=lr, betas=(0.5,0.999))
 optimizer_d = torch.optim.Adam(discriminator.parameters(), lr=lr, betas=(0.5,0.999))

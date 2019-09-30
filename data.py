@@ -1,7 +1,7 @@
 import torch
 import h5py
 
-class GanartDataSet(torch.utils.data.Dataset):
+class GenartDataSet(torch.utils.data.Dataset):
     def __init__(self, h5_file, key='data'):
         super().__init__()
 

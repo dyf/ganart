@@ -2,7 +2,7 @@ from torch import nn
 import torch
 import numpy as np
 
-class GanartGenerator(nn.Module):
+class GenartGenerator(nn.Module):
     def __init__(self, input_size, image_shape, rlslope=0.2):
         super().__init__()
 
@@ -48,7 +48,7 @@ class GanartGenerator(nn.Module):
         return img
 
 
-class GanartDiscriminator(nn.Module):
+class GenartDiscriminator(nn.Module):
     def __init__(self, image_shape, rlslope=0.2):
         super().__init__()
 
@@ -94,7 +94,7 @@ class GanartDiscriminator(nn.Module):
         val = self.conv_adv_layer(out)
         return val
 
-class GanartAutoencoder(nn.Module):
+class GenartAutoencoder(nn.Module):
     def __init__(self, image_shape, latent_size, rlslope=0.2):
         super().__init__()
 
@@ -152,7 +152,7 @@ class GanartAutoencoder(nn.Module):
 if __name__ == "__main__":
     import h5py
     
-    fname = "/mnt/c/Users/davidf/workspace/ganart/circles.h5"
+    fname = "/mnt/c/Users/davidf/workspace/genart/circles.h5"
 
     with h5py.File(fname, "r") as f:
         data = f["data"][:10,:]
