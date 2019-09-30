@@ -147,6 +147,12 @@ class GenartAutoencoder(nn.Module):
         decoder_input_square = decoder_input.view(decoder_input.shape[0], 128, self.conv_init_size, self.conv_init_size)
         decoded = self.decoder(decoder_input_square)
         return decoded
+
+    def forward_decode(self, z):
+        decoder_input = self.decoder_input_layer(z)
+        decoder_input_square = decoder_input.view(decoder_input.shape[0], 128, self.conv_init_size, self.conv_init_size)
+        decoded = self.decoder(decoder_input_square)
+        return decoded
     
 
 if __name__ == "__main__":
