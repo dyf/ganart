@@ -12,11 +12,11 @@ from torchvision.utils import save_image
 
 def main():
     latent_size = 50
-    n_epochs = 100
+    n_epochs = 500
     img_shape = (256, 256, 3)
-    save_interval = 5
+    save_interval = 20
     lr = 0.0002
-    batch_size = 30
+    batch_size = 40
 
     save_path = "./out"
     train_data_path = './circles.h5'
@@ -54,6 +54,7 @@ def main():
                 save_image(out_imgs.data[:9],
                         os.path.join(save_path, f'images_{ni:04d}_{bi:04d}.png'),
                         nrow=3, range=[0,1])
+        torch.save(model.state_dict(), os.path.join(save_path, f'model_{ni:04d}.weights'))
     print("done")
 
 if __name__ == "__main__": main()

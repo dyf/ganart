@@ -1,4 +1,5 @@
 *~
-*png
-*h5
-*pyc
+*.png
+*.h5
+*.pyc
+*.weights
