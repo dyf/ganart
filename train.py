@@ -14,7 +14,8 @@ def main():
     latent_size = 50
     n_epochs = 500
     img_shape = (256, 256, 3)
-    save_interval = 20
+    image_save_interval = 100
+    epoch_save_interval = 10
     lr = 0.0002
     batch_size = 40
 
@@ -49,12 +50,13 @@ def main():
             batch_loss.backward()
             optimizer.step()
 
-            if bi % save_interval == 0:
+            if bi % image_save_interval == 0:
                 print(f'Epoch {ni}, Batch {bi} - saving')
                 save_image(out_imgs.data[:9],
                         os.path.join(save_path, f'images_{ni:04d}_{bi:04d}.png'),
                         nrow=3, range=[0,1])
-        torch.save(model.state_dict(), os.path.join(save_path, f'model_{ni:04d}.weights'))
+        if ni % epoch_save_interval == 0:
+            torch.save(model.state_dict(), os.path.join(save_path, f'model_{ni:04d}.weights'))
     print("done")
 
 if __name__ == "__main__": main()
