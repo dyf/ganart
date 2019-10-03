@@ -5,6 +5,7 @@ import numpy as np
 from torchvision.utils import save_image
 import random
 import skimage.io as skio
+import os
 
 def vis_random(model_idxs, N, img_shape, latent_size, out_path):
     z = np.random.uniform(0, 1, (N, latent_size)).astype(np.float32)
@@ -13,7 +14,7 @@ def vis_random(model_idxs, N, img_shape, latent_size, out_path):
     for model_idx in model_idxs:
         try:
             model = load_autoencoder(model_idx, img_shape, latent_size)            
-        except FileNotFoundError:
+        except FileNotFoundError as e:            
             continue
         #z = np.random.normal(0, .5, (N, latent_size)).astype(np.float32)    
 
@@ -25,12 +26,15 @@ def vis_random(model_idxs, N, img_shape, latent_size, out_path):
                    out_path % model_idx,
                    nrow=3, range=[0,1])
 
-def vis_trained(model_idxs, img_idxs, img_shape, latent_size, train_data_path, out_path):
+def vis_trained(model_idxs, img_idxs, img_shape, latent_size, train_data_path, out_path, out_gt_path):
     ds = GenartDataSet(train_data_path)
-    
+        
     imgs,_ = ds[img_idxs]
     imgs = torch.from_numpy(imgs.astype(np.float32))
-    print(imgs.shape)
+    
+    save_image(imgs,
+               out_gt_path,
+               nrow=3, range=[0,1])
 
     for model_idx in model_idxs:
         try:
@@ -65,22 +69,26 @@ def vis_untrained(model_idxs, img, img_shape, latent_size, out_path):
 def load_autoencoder(i, img_shape, latent_size):
     weights_path = f'out/model_{i:04d}.weights'
     
+    if not os.path.exists(weights_path):
+        raise FileNotFoundError("newp")
+    
     model = GenartAutoencoder(img_shape, latent_size)
     model.load_state_dict(torch.load(weights_path))    
 
     return model
 
 def main():
-    latent_size = 50
+    latent_size = 512
     n_epochs = 500
     img_shape = (256, 256, 3)
     save_interval = 20
     lr = 0.0002
     batch_size = 40
 
-    #vis_random(range(500), 9, img_shape, latent_size, "vis/random_%04d.png")
-    #vis_trained(range(500), sorted(random.choices(range(10000),k=9)), img_shape, latent_size, "./circles.h5", "vis/trained_%04d.png")
-    img = skio.imread('cat.jpg').transpose((2,0,1)).astype(np.float32) / 255.0
-    vis_untrained(range(500), img, img_shape, latent_size, "vis/untrained_%04d.png")
+    #img = skio.imread('cat.jpg').transpose((2,0,1)).astype(np.float32) / 255.0
+    #vis_untrained(range(500), img, img_shape, latent_size, "vis/untrained_%04d.png")
+    vis_random(range(500), 9, img_shape, latent_size, "vis/random_%04d.png")
+    vis_trained(range(500), sorted(random.choices(range(10000),k=9)), img_shape, latent_size, "./circles.h5", "vis/trained_%04d.png", "vis/trained_inputs.png")
+    
 
 if __name__ == "__main__": main()

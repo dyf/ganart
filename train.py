@@ -11,13 +11,13 @@ from torchvision.utils import save_image
 
 
 def main():
-    latent_size = 50
+    latent_size = 512
     n_epochs = 500
     img_shape = (256, 256, 3)
-    image_save_interval = 100
+    image_save_interval = 400
     epoch_save_interval = 10
     lr = 0.0002
-    batch_size = 40
+    batch_size = 10
 
     save_path = "./out"
     train_data_path = './circles.h5'
