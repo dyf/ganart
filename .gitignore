@@ -1,5 +1,7 @@
 *~
 *.png
+*.gif
+*.jpg
 *.h5
 *.pyc
 *.weights
