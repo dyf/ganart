@@ -108,13 +108,13 @@ class GenartAutoencoder(nn.Module):
             nn.Conv2d(32, 64, 3, 2, 1),
             nn.LeakyReLU(rlslope, inplace=True),
             nn.Dropout2d(0.25),
-            nn.Conv2d(64, 128, 3, 2, 1),
-            nn.LeakyReLU(rlslope, inplace=True),
-            nn.Dropout2d(0.25),            
+            #nn.Conv2d(64, 128, 3, 2, 1),
+            #nn.LeakyReLU(rlslope, inplace=True),
+            #nn.Dropout2d(0.25),            
         )
 
         self.latent_layer = nn.Sequential(
-            nn.Linear(32768, latent_size),
+            nn.Linear(65536, latent_size),
             nn.Sigmoid()
         )
 
@@ -126,12 +126,12 @@ class GenartAutoencoder(nn.Module):
 
         self.decoder = nn.Sequential(            
             nn.Upsample(scale_factor=2),
-            nn.Conv2d(128, 128, 3, stride=1, padding=1),
-            nn.LeakyReLU(rlslope, inplace=True),
-            nn.Upsample(scale_factor=2),
             nn.Conv2d(128, 64, 3, stride=1, padding=1),
             nn.LeakyReLU(rlslope, inplace=True),
-            nn.Conv2d(64, 3, 3, stride=1, padding=1),
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(64, 32, 3, stride=1, padding=1),
+            nn.LeakyReLU(rlslope, inplace=True),
+            nn.Conv2d(32, 3, 3, stride=1, padding=1),
             nn.Tanh()
         )
 

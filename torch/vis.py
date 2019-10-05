@@ -85,8 +85,9 @@ def main():
     lr = 0.0002
     batch_size = 40
 
-    #img = skio.imread('cat.jpg').transpose((2,0,1)).astype(np.float32) / 255.0
-    #vis_untrained(range(500), img, img_shape, latent_size, "vis/untrained_%04d.png")
+    img = skio.imread('octopus5.png').transpose((2,0,1)).astype(np.float32) / 255.0
+    img = img[:3,:,:]
+    vis_untrained(range(500), img, img_shape, latent_size, "vis/untrained_%04d.png")
     vis_random(range(500), 9, img_shape, latent_size, "vis/random_%04d.png")
     vis_trained(range(500), sorted(random.choices(range(10000),k=9)), img_shape, latent_size, "./circles.h5", "vis/trained_%04d.png", "vis/trained_inputs.png")
     

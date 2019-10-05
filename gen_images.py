@@ -5,8 +5,8 @@ import h5py
 import itertools
 import random
 
-def gen_circle(shape, n_min, n_max):
-    img = np.zeros(shape, dtype=float)
+def gen_circle(shape, n_min, n_max, dtype=np.float32):
+    img = np.zeros(shape, dtype=dtype)
 
     bg = np.random.random(3)
 
@@ -16,15 +16,17 @@ def gen_circle(shape, n_min, n_max):
 
     n = np.random.randint(n_min, n_max+1)
 
-    r_max = min(shape[1]*0.3, shape[2]*0.3)
+    r_max = min(shape[1]*0.75, shape[2]*0.75)
     r_min = 2    
+    radii = np.random.uniform(r_min, r_max, n).astype(int)
+    radii = np.sort(radii)[::-1]    
     
     for i in range(n):
         color = np.random.random(3)
 
-        radius = int(np.random.uniform(r_min, r_max))
-        r = int(np.random.uniform(radius, shape[1]-radius))
-        c = int(np.random.uniform(radius, shape[2]-radius))
+        radius = radii[i]
+        r = int(np.random.uniform(0, shape[1]-1))
+        c = int(np.random.uniform(0, shape[2]-1))
 
         rr,cc = skd.circle(r, c, radius, shape=[shape[1], shape[2]])
 
@@ -36,24 +38,24 @@ def gen_circle(shape, n_min, n_max):
 
     return img
 
-def gen_circles(n, shape, n_min, n_max, fname):
+def gen_circles(n, shape, n_min, n_max, fname, dtype=np.float32):
     
     with h5py.File(fname, "w") as f:
-        ds = f.create_dataset("data", (n,*shape), dtype='float32')
+        ds = f.create_dataset("data", (n,*shape), dtype=dtype)
 
         for i in range(n):
             if i % 100 == 0:
                 print(f'{i+1}/{n}')
             
-            img = gen_circle(shape, n_min, n_max)
+            img = gen_circle(shape, n_min, n_max, dtype)
             ds[i,:] = img
 
 
 if __name__ == "__main__":
     np.random.seed(0)
 
-    gen_circles(20000, (3,256,256), 1, 15,
-                "circles.h5")
+    gen_circles(20000, (3,256,256), 1, 20,
+                "circles.h5", dtype=np.float32)
         
 
 
