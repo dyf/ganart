@@ -6,6 +6,9 @@ from data import GenartDataSet
 
 
 class SaveImageCB(tf.keras.callbacks.Callback):
+    def __init__(self):
+        self.current_epoch = 0
+
     def on_train_batch_end(self, batch, logs=None):
         bi = logs['batch']
         if bi % 100 == 0:
@@ -14,10 +17,10 @@ class SaveImageCB(tf.keras.callbacks.Callback):
             out_img = mod.call(img)
             out_img = tf.image.convert_image_dtype(out_img[0], dtype=tf.uint8)
             jpg = tf.io.encode_jpeg(out_img, quality=100)
-            tf.io.write_file(f'out/train_{bi:04d}.jpg', jpg)
+            tf.io.write_file(f'out/train_{self.current_epoch:04d}_{bi:04d}.jpg', jpg)
 
-    def on_epoch_end(self, epoch, logs=None):
-        pass
+    def on_epoch_begin(self, epoch, logs=None):
+        self.current_epoch = epoch
 
 checkpoint_path = "out/weights-{epoch:04d}.ckpt"
 
