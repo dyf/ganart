@@ -12,12 +12,21 @@ class SaveImageCB(tf.keras.callbacks.Callback):
 
             img = ds[100:101]
             out_img = mod.call(img)
-            out_img = tf.image.convert_image_dtype(img[0], dtype=tf.uint8)
+            out_img = tf.image.convert_image_dtype(out_img[0], dtype=tf.uint8)
             jpg = tf.io.encode_jpeg(out_img, quality=100)
             tf.io.write_file(f'out/train_{bi:04d}.jpg', jpg)
 
     def on_epoch_end(self, epoch, logs=None):
         pass
+
+checkpoint_path = "out/weights-{epoch:04d}.ckpt"
+
+# Create a callback that saves the model's weights every 5 epochs
+cp_callback = tf.keras.callbacks.ModelCheckpoint(
+    filepath=checkpoint_path, 
+    verbose=1, 
+    save_weights_only=True,
+    period=1)
 
 ds = GenartDataSet("../circles.h5")
 
@@ -36,6 +45,6 @@ train_ds = tf.data.Dataset.from_generator(
 mod = GenartAutoencoder(img_shape, latent_size)
 
 mod.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
-mod.fit(train_ds, epochs=n_epochs, callbacks=[SaveImageCB()])
+mod.fit(train_ds, epochs=n_epochs, callbacks=[SaveImageCB(), cp_callback])
 
 
