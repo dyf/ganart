@@ -5,13 +5,13 @@ from data import GenartDataSet
 
 
 
-class SaveImageCB(tf.keras.callbacks.Callback):
+class SaveCB(tf.keras.callbacks.Callback):
     def __init__(self):
         self.current_epoch = 0
 
     def on_train_batch_end(self, batch, logs=None):
         bi = logs['batch']
-        if bi % 100 == 0:
+        if bi % 200 == 0:
 
             img = ds[100:101]
             out_img = mod.call(img)
@@ -22,14 +22,9 @@ class SaveImageCB(tf.keras.callbacks.Callback):
     def on_epoch_begin(self, epoch, logs=None):
         self.current_epoch = epoch
 
-checkpoint_path = "out/weights-{epoch:04d}.ckpt"
-
-# Create a callback that saves the model's weights every 5 epochs
-cp_callback = tf.keras.callbacks.ModelCheckpoint(
-    filepath=checkpoint_path, 
-    verbose=1, 
-    save_weights_only=True,
-    period=1)
+    def on_epoch_end(self, epoch, logs=None):
+        if epoch % 2 == 0:
+            manager.save()
 
 ds = GenartDataSet("../circles.h5")
 
@@ -42,12 +37,27 @@ n_epochs = 100
 train_ds = tf.data.Dataset.from_generator(
     ds, 
     output_types=(tf.float32, tf.float32),
-    output_shapes=((256,256,3),(256,256,3))
+    output_shapes=(ds.shape[1:], ds.shape[1:])
 ).batch(batch_size)
 
+#tf.keras.mixed_precision.experimental.set_policy('mixed_float16')
 mod = GenartAutoencoder(img_shape, latent_size)
 
-mod.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
-mod.fit(train_ds, epochs=n_epochs, callbacks=[SaveImageCB(), cp_callback])
+opt = tf.keras.optimizers.Adam()
+
+ckpt = tf.train.Checkpoint(step=tf.Variable(1), optimizer=opt, net=mod)
+manager = tf.train.CheckpointManager(ckpt, './out/tf_ckpts', max_to_keep=5, keep_checkpoint_every_n_hours=1)
+ckpt.restore(manager.latest_checkpoint)
+
+if manager.latest_checkpoint:
+  print("Restored from {}".format(manager.latest_checkpoint))
+else:
+  print("Initializing from scratch.")
+  
+
+#opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer(opt, 'dynamic')
+
+mod.compile(optimizer=opt, loss='mse', metrics=['accuracy'])
+mod.fit(train_ds, epochs=n_epochs, callbacks=[SaveCB()])
 
 
