@@ -99,7 +99,7 @@ EPOCHS = 50
 BATCH_SIZE = 10
 
 img_shape = (256,256,3)
-latent_size = 256
+latent_size = 2048
 num_examples_to_generate = 16
 
 cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
@@ -119,6 +119,8 @@ checkpoint = tf.train.Checkpoint(generator_optimizer=generator_optimizer,
                                  discriminator_optimizer=discriminator_optimizer,
                                  generator=generator,
                                  discriminator=discriminator)
+
+checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
 
 seed = tf.random.normal([num_examples_to_generate, latent_size])
 

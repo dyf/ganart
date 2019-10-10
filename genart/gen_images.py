@@ -32,7 +32,15 @@ def gen_circle(shape, n_min, n_max, dtype=np.float32):
         img[rr,cc] = color
     return img
 
-def gen_circles(n, shape, n_min, n_max, fname, dtype=np.float32):
+def gen_circles(n, shape, n_min, n_max, dtype=np.float32):
+    ds = np.zeros([n]+list(shape), dtype=dtype)    
+    for i in range(n):
+        ds[i,:] = gen_circle(shape, n_min, n_max, dtype)            
+
+    return ds
+
+
+def gen_circles_h5(n, shape, n_min, n_max, fname, dtype=np.float32):
     
     with h5py.File(fname, "w") as f:
         ds = f.create_dataset("data", (n,*shape), dtype=dtype)
