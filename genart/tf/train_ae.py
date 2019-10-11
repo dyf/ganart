@@ -66,8 +66,9 @@ def train():
         print ('Time for epoch {} is {} sec'.format(epoch + 1, time.time()-start))
 
     # Generate after the final epoch
-    generate_and_save_images(generator,
-                             epochs,
+    generate_and_save_images(autoencoder,
+                             epoch,
+                             batch,
                              seed)
     
     manager.save()

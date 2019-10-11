@@ -12,43 +12,22 @@ class GenartAutoencoder(Model):
         super().__init__()
     
         self.encoder = Sequential([
-            #Conv2D(64, kernel_size=3, activation='relu'),                        
-
-            #BatchNormalization(),
-            #Conv2D(32, kernel_size=3, activation='relu'),            
-            
+           
             Conv2D(32, kernel_size=3, strides=(2,2)),
             LeakyReLU(0.2),
-            #MaxPooling2D((2,2), padding='same'),
-            #Dropout(0.3),
-            
-            #BatchNormalization(),
-            #Conv2D(64, kernel_size=3, activation='relu'),            
-            Conv2D(64, kernel_size=3, strides=(2,2)),
-            LeakyReLU(0.2),
-            #MaxPooling2D((2,2), padding='same'),
-            #Dropout(0.3),
-            
-            #BatchNormalization(),
-            #Conv2D(64, kernel_size=3, activation='relu'),        
-            Conv2D(64, kernel_size=3, strides=(2,2)),
-            LeakyReLU(0.2),
-            #MaxPooling2D((2,2), padding='same'),
 
-            #Conv2D(128, kernel_size=3, activation='relu'),            
+            Conv2D(64, kernel_size=3, strides=(2,2)),
+            LeakyReLU(0.2),
+            
+            Conv2D(64, kernel_size=3, strides=(2,2)),
+            LeakyReLU(0.2),
+            
             Conv2D(128, kernel_size=3, strides=(2,2)),
             LeakyReLU(0.2),
-            #MaxPooling2D((2,2), padding='same'),
-
-            #Conv2D(32, kernel_size=3, activation='relu'),            
-            #MaxPooling2D((2,2), padding='same'),
-
-            #BatchNormalization(),
+            
             Flatten(),
-            #Dense(latent_size*4, activation='relu')            
+            Dense(latent_size, activation='tanh')
         ])
-
-        self.latent_layer = Dense(latent_size, activation='tanh')#, kernel_regularizer=regularizers.l1(1e-9))
 
         dec_input_shape = (image_shape[0] // 8, image_shape[1] // 8, 128)
 
@@ -57,46 +36,35 @@ class GenartAutoencoder(Model):
             Dense(np.prod(dec_input_shape), activation='relu'),
             Reshape(target_shape=dec_input_shape),
 
-            #BatchNormalization(),            
-            #Conv2D(64, kernel_size=3, padding='same', activation='relu'),
-            Conv2DTranspose(64, kernel_size=3, strides=(2,2), padding='same'),
-            LeakyReLU(0.2),
-            #UpSampling2D((2,2)),
-
-            #BatchNormalization(),            
-            #Conv2D(64, kernel_size=3, padding='same', activation='relu'),
-            Conv2DTranspose(64, kernel_size=3, strides=(2,2), padding='same'),
-            LeakyReLU(0.2),
-            #UpSampling2D((2,2)),
             
-            #BatchNormalization(),            
-            #Conv2D(32, kernel_size=3, padding='same', activation='relu'),
+            Conv2DTranspose(64, kernel_size=3, strides=(2,2), padding='same'),
+            LeakyReLU(0.2),
+            
+            Conv2DTranspose(64, kernel_size=3, strides=(2,2), padding='same'),
+            LeakyReLU(0.2),
+            
             Conv2DTranspose(32, kernel_size=3, strides=(2,2), padding='same'),
             LeakyReLU(0.2),
-            #UpSampling2D((2,2)), 
             
-            #BatchNormalization(),            
-            #Conv2D(32, kernel_size=3, padding='same', activation='relu'),
-            #UpSampling2D((2,2)), 
-            
-            #BatchNormalization(),
-            #Conv2D(32, kernel_size=3, padding='same', activation='relu'),
-            
-            #BatchNormalization(),
-            #Conv2D(32, kernel_size=3, padding='same', activation='relu'),
-
-            
-            #BatchNormalization(),           
             Conv2D(3, kernel_size=7, padding='same', activation='sigmoid')
-        ])
-
-        
+        ])        
 
     def call(self, x):
         x = self.encoder(x)
-        x = self.latent_layer(x)
-        x = self.decoder(x)
-        return x
+        y = self.decoder(x)
+        return x,y
+
+class GenartAaeDiscriminator(Model):
+    def __init__(self, latent_size):
+        super().__init__()
+
+        self.discriminator = Sequential([
+            InputLayer(input_shape=(latent_size,)),
+            Dense(1, activation='sigmoid')
+        ])
+
+    def call(self, x):
+        return self.discriminator(x)
 
 class GenartAeGanDiscriminator(Model):
     def __init__(self, ae):
