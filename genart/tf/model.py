@@ -10,6 +10,8 @@ from tensorflow.keras import regularizers
 class GenartAutoencoder(Model):
     def __init__(self, image_shape, latent_size, rlslope=0.2, dropout=0.25):
         super().__init__()
+
+        self.latent_size = latent_size
     
         self.encoder = Sequential([
            

@@ -3,14 +3,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 import os
+import sys
+
+import skimage.io as skio
+import imageio
 
 from genart.tf.model import GenartAutoencoder, GenartAaeDiscriminator
 import genart.gen_images as gi
 
-def ae_loss(outputs, inputs):
-    return 
+mse = tf.keras.losses.mean_squared_error
+cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
-def generate_and_save_images(model, epoch, batch, img_input, latent_input):
+def generate_and_save_images(model, epoch, batch, img_input, latent_input, out_dir):
     # Notice `training` is set to False.
     # This is so all layers run in inference mode (batchnorm).    
     _,img_output = model(img_input, training=False)
@@ -18,6 +22,7 @@ def generate_and_save_images(model, epoch, batch, img_input, latent_input):
     print(f"epoch {epoch}, batch {batch}, loss {loss}")
 
     latent_output = model.decoder(latent_input, training=False)
+    loss = generator_loss(latent_output)
 
     fig = plt.figure(figsize=(8,5))
 
@@ -35,7 +40,7 @@ def generate_and_save_images(model, epoch, batch, img_input, latent_input):
         plt.imshow(np.clip(latent_output[i],0,1))
         plt.axis('off')
 
-    plt.savefig(f'out_aae/image_{epoch:04d}_{batch:04d}.png')
+    plt.savefig(f'{out_dir}/image_{epoch:04d}_{batch:04d}.png')
     plt.close(fig)
 
 def discriminator_loss(real_output, fake_output):
@@ -48,8 +53,9 @@ def generator_loss(fake_output):
     return cross_entropy(tf.ones_like(fake_output), fake_output)
 
 @tf.function
-def train_step(images):   
-    noise = tf.random.normal([batch_size, latent_size])
+def train_step(images, noise, 
+               autoencoder, discriminator,
+               autoencoder_optimizer, discriminator_optimizer):       
 
     with tf.GradientTape() as ae_tape, tf.GradientTape() as disc_tape:        
         input_encoded, output_decoded = autoencoder(images, training=True)        
@@ -67,7 +73,20 @@ def train_step(images):
     autoencoder_optimizer.apply_gradients(zip(ae_gradients, autoencoder.trainable_variables))
     discriminator_optimizer.apply_gradients(zip(disc_gradients, discriminator.trainable_variables))
 
-def train():
+def train(autoencoder, discriminator,
+          autoencoder_optimizer, discriminator_optimizer,
+          manager, train_params, gi_params, out_dir):
+
+    batch_size = train_params['batch_size']
+    n_epochs = train_params['n_epochs']
+    epoch_size = train_params['epoch_size']    
+    seed_size = train_params['seed_size']
+    
+    latent_size = autoencoder.latent_size
+
+    img_seed = gi.gen_circles(seed_size, **gi_params)
+    latent_seed = tf.random.normal([seed_size, latent_size])
+
     for epoch in range(n_epochs):
         start = time.time()
 
@@ -77,15 +96,19 @@ def train():
 
         for batch in range(0, epoch_size, batch_size):
             batch_imgs = imgs[batch:batch+batch_size]
+            noise = tf.random.normal([batch_size, latent_size])
 
-            train_step(batch_imgs)
+            train_step(batch_imgs, noise,
+                       autoencoder, discriminator,
+                       autoencoder_optimizer, discriminator_optimizer)
 
             if batch % 500 == 0:
                 generate_and_save_images(autoencoder,
                                          epoch,
                                          batch,
                                          img_seed,
-                                         latent_seed)
+                                         latent_seed,
+                                         out_dir)
 
         # Save the model every 10 epochs
         if epoch % 10 == 0:
@@ -98,53 +121,81 @@ def train():
                              epoch,
                              batch,
                              img_seed,
-                             latent_seed)
+                             latent_seed,
+                             out_dir)
     
     manager.save()
 
-latent_size = 2048
-img_shape = (256,256,3)
-batch_size = 10
-epoch_size = 1000
-n_epochs = 500
-seed_size = 16
+def vis(autoencoder, discriminator, gi_params):
+    imgs = gi.gen_circles(2, **gi_params)
 
-gi_params = { 'shape': img_shape, 'n_min': 1, 'n_max': 20, 'dtype': np.float32 }
+    latent = autoencoder.encoder(imgs, training=False)
 
-img_seed = gi.gen_circles(seed_size, **gi_params)
-latent_seed = tf.random.normal([seed_size, latent_size])
+    alpha = np.array([np.linspace(0,1,25)]).T
 
+    latent_interp = latent[0:1] * alpha + latent[1:2] * (1.0-alpha)
+    gen_imgs = autoencoder.decoder(latent_interp, training=False)
+    
+    imageio.mimsave('test/interp.gif', tf.concat([gen_imgs, gen_imgs[::-1]], axis=0), fps=25)
 
-mse = tf.keras.losses.mean_squared_error
-cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+    img_fnames = [ 'octopus5.png', 'cat.jpg' ]
+    for i,img_fname in enumerate(img_fnames):
+        img = skio.imread(img_fname)[:,:,:3]
+        img = np.array([img]).astype(np.float32) / 255.0        
 
-#tf.keras.mixed_precision.experimental.set_policy('mixed_float16')
-autoencoder = GenartAutoencoder(img_shape, latent_size)
-discriminator = GenartAaeDiscriminator(latent_size)
+        _,out_img = autoencoder(img)
 
-autoencoder_optimizer = tf.keras.optimizers.Adam()
-discriminator_optimizer = tf.keras.optimizers.Adam()
-
-checkpoint_dir = 'out_aae/tf_ckpts'
-ckpt = tf.train.Checkpoint(step=tf.Variable(1), 
-                           autoencoder_optimizer=autoencoder_optimizer, 
-                           discriminator_optimizer=discriminator_optimizer,
-                           autoencoder=autoencoder,
-                           discriminator=discriminator)
-manager = tf.train.CheckpointManager(ckpt, checkpoint_dir, max_to_keep=2, keep_checkpoint_every_n_hours=1)
-ckpt.restore(manager.latest_checkpoint)
-
-if manager.latest_checkpoint:
-  print("Restored from {}".format(manager.latest_checkpoint))
-else:
-  print("Initializing from scratch.")
-  
-
-train()
-#opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer(opt, 'dynamic')
-#save_cb = SaveCB()
-
-#mod.compile(optimizer=opt, loss='mse', metrics=['accuracy'])
-#mod.fit(train_ds, epochs=n_epochs, callbacks=[save_cb])
+        imageio.imsave(f'test/untrained_{i:04d}.png', np.clip(out_img[0],0,1))
 
 
+def main():
+    latent_size = 2048
+    img_shape = (256,256,3)
+
+    train_params = dict(
+        batch_size = 10,
+        epoch_size = 1000,
+        n_epochs = 500,
+        seed_size = 16
+    )
+
+    gi_params = dict( 
+        shape = img_shape, 
+        n_min = 1,
+        n_max = 20, 
+        dtype = np.float32 
+    )
+
+    out_dir = 'out_aae'
+
+    autoencoder = GenartAutoencoder(img_shape, latent_size)
+    discriminator = GenartAaeDiscriminator(latent_size)
+
+    autoencoder_optimizer = tf.keras.optimizers.Adam()
+    discriminator_optimizer = tf.keras.optimizers.Adam()
+    
+    checkpoint_dir = os.path.join(out_dir, 'tf_ckpts')
+
+    ckpt = tf.train.Checkpoint(step=tf.Variable(1), 
+                               autoencoder_optimizer=autoencoder_optimizer, 
+                               discriminator_optimizer=discriminator_optimizer,
+                               autoencoder=autoencoder,
+                               discriminator=discriminator)
+    manager = tf.train.CheckpointManager(ckpt, checkpoint_dir, max_to_keep=2, keep_checkpoint_every_n_hours=1)
+    ckpt.restore(manager.latest_checkpoint)
+
+    if manager.latest_checkpoint:
+        print("Restored from {}".format(manager.latest_checkpoint))
+    else:
+        print("Initializing from scratch.")
+    
+    cmd = sys.argv[1] 
+    if cmd == 'train':
+        train(autoencoder, discriminator,
+              autoencoder_optimizer, discriminator_optimizer,
+              manager, train_params, gi_params, out_dir)
+    elif cmd == 'vis':
+        vis(autoencoder, discriminator, gi_params)
+    
+
+if __name__ == "__main__": main()
