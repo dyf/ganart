@@ -62,6 +62,8 @@ class GenartAaeDiscriminator(Model):
 
         self.discriminator = Sequential([
             InputLayer(input_shape=(latent_size,)),
+            Dense(latent_size, activation='relu'),
+            Dense(latent_size, activation='relu'),
             Dense(1, activation='sigmoid')
         ])
 

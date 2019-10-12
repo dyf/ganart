@@ -73,7 +73,7 @@ def train():
     
     manager.save()
 
-latent_size = 2048
+latent_size = 1024
 img_shape = (256,256,3)
 batch_size = 10
 epoch_size = 1000

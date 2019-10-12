@@ -127,7 +127,7 @@ def train(autoencoder, discriminator,
     manager.save()
 
 def vis(autoencoder, discriminator, gi_params):
-    imgs = gi.gen_circles(2, **gi_params)
+    imgs = gi.gen_shapes_set(2, **gi_params)
 
     latent = autoencoder.encoder(imgs, training=False)
 
