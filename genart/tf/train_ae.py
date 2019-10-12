@@ -45,7 +45,7 @@ def train():
         start = time.time()
 
         print("generating images")
-        imgs = gi.gen_circles(epoch_size, **gi_params)
+        imgs = gi.gen_shapes_set(epoch_size, **gi_params)
         print("training", imgs.shape)
 
         for batch in range(0, epoch_size, batch_size):
@@ -77,11 +77,11 @@ latent_size = 2048
 img_shape = (256,256,3)
 batch_size = 10
 epoch_size = 1000
-n_epochs = 500
+n_epochs = 1000
 
-gi_params = { 'shape': img_shape, 'n_min': 1, 'n_max': 20, 'dtype': np.float32 }
+gi_params = { 'shape': None, 'img_shape': img_shape, 'n_min': 1, 'n_max': 20 }
 
-seed = gi.gen_circles(16, **gi_params)
+seed = gi.gen_shapes_set(16, **gi_params)
 
 #tf.keras.mixed_precision.experimental.set_policy('mixed_float16')
 autoencoder = GenartAutoencoder(img_shape, latent_size)

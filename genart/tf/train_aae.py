@@ -84,14 +84,14 @@ def train(autoencoder, discriminator,
     
     latent_size = autoencoder.latent_size
 
-    img_seed = gi.gen_circles(seed_size, **gi_params)
+    img_seed = gi.gen_shapes_set(seed_size, **gi_params)
     latent_seed = tf.random.normal([seed_size, latent_size])
 
     for epoch in range(n_epochs):
         start = time.time()
 
         print("generating images")
-        imgs = gi.gen_circles(epoch_size, **gi_params)
+        imgs = gi.gen_shapes_set(epoch_size, **gi_params)
         print("training", imgs.shape)
 
         for batch in range(0, epoch_size, batch_size):
@@ -160,10 +160,10 @@ def main():
     )
 
     gi_params = dict( 
-        shape = img_shape, 
+        shape = None,
+        img_shape = img_shape, 
         n_min = 1,
-        n_max = 20, 
-        dtype = np.float32 
+        n_max = 20
     )
 
     out_dir = 'out_aae'
