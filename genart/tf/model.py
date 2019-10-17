@@ -13,42 +13,62 @@ class GenartAutoencoder(Model):
 
         self.latent_size = latent_size
     
-        self.encoder = Sequential([
-           
-            Conv2D(32, kernel_size=3, strides=(2,2)),
-            LeakyReLU(0.2),
+        num_layers = 5
+        scale = 2 ** num_layers
 
-            Conv2D(64, kernel_size=3, strides=(2,2)),
-            LeakyReLU(0.2),
+        self.encoder = Sequential([
+            Conv2D(32, kernel_size=3, strides=(2,2), padding='same'),
+            LeakyReLU(rlslope),
             
-            Conv2D(64, kernel_size=3, strides=(2,2)),
-            LeakyReLU(0.2),
+            Conv2D(64, kernel_size=3, strides=(2,2), padding='same'),
+            LeakyReLU(rlslope),
             
-            Conv2D(128, kernel_size=3, strides=(2,2)),
-            LeakyReLU(0.2),
+            Conv2D(128, kernel_size=3, strides=(2,2), padding='same'),
+            LeakyReLU(rlslope),
+            
+            Conv2D(128, kernel_size=3, strides=(2,2), padding='same'),
+            LeakyReLU(rlslope),
+
+            Conv2D(256, kernel_size=3, strides=(2,2), padding='same'),
+            LeakyReLU(rlslope),
             
             Flatten(),
+            
             Dense(latent_size, activation='tanh')
         ])
 
-        dec_input_shape = (image_shape[0] // 8, image_shape[1] // 8, 128)
+        dec_input_shape = (image_shape[0] // scale, image_shape[1] // scale, 256)
 
         self.decoder = Sequential([
-            InputLayer(input_shape=(latent_size,)),            
-            Dense(np.prod(dec_input_shape), activation='relu'),
+            InputLayer(input_shape=(latent_size,)),    
+
+            Dense(np.prod(dec_input_shape)),
+            LeakyReLU(rlslope),
+
             Reshape(target_shape=dec_input_shape),
 
-            
+            Conv2DTranspose(256, kernel_size=3, strides=(2,2), padding='same'),
+            LeakyReLU(rlslope),
+
+            Conv2DTranspose(128, kernel_size=3, strides=(2,2), padding='same'),
+            LeakyReLU(rlslope),
+
+            Conv2DTranspose(128, kernel_size=3, strides=(2,2), padding='same'),
+            LeakyReLU(rlslope),
+
+            #Conv2D(128, kernel_size=3, padding='same'),
+            #LeakyReLU(rlslope),
             Conv2DTranspose(64, kernel_size=3, strides=(2,2), padding='same'),
-            LeakyReLU(0.2),
+            LeakyReLU(rlslope),
+            #UpSampling2D((2,2)),
             
-            Conv2DTranspose(64, kernel_size=3, strides=(2,2), padding='same'),
-            LeakyReLU(0.2),
-            
+            #Conv2DTranspose(32, kernel_size=3, strides=(4,4), padding='same', activation='relu'),
+            #Conv2D(64, kernel_size=3, padding='same'),
+            #LeakyReLU(rlslope),
             Conv2DTranspose(32, kernel_size=3, strides=(2,2), padding='same'),
-            LeakyReLU(0.2),
-            
-            Conv2D(3, kernel_size=7, padding='same', activation='sigmoid')
+            LeakyReLU(rlslope),
+                                    
+            Conv2D(3, kernel_size=3, padding='same', activation='sigmoid')
         ])        
 
     def call(self, x):
@@ -62,8 +82,8 @@ class GenartAaeDiscriminator(Model):
 
         self.discriminator = Sequential([
             InputLayer(input_shape=(latent_size,)),
-            Dense(latent_size, activation='relu'),
-            Dense(latent_size, activation='relu'),
+            Dense(latent_size//2, activation='relu'),
+            #Dense(latent_size, activation='relu'),            
             Dense(1, activation='sigmoid')
         ])
 
