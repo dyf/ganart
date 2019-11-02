@@ -39,19 +39,53 @@ def downsample(filters, size, apply_batchnorm=True):
 
     return result
 
-def UpScaleModel(levels=2):
-    inputs = Input(shape=[None,None,3])
-    x = inputs    
+def UNet(levels=2):
+    inputs = Input(shape=[256,256,3]) # 256
+    x = inputs
 
-    for level in range(levels):
-        x = upsample(64, 4, apply_dropout=True)(x)
+    down_stack = [
+        downsample(64, 4, apply_batchnorm=False), # 128
+        downsample(128, 4), # 64
+        downsample(256, 4), # 32
+        downsample(512, 4), # 16
+        downsample(512, 4), # 8
+        downsample(512, 4), # 4
+        downsample(512, 4), # 2
+        downsample(512, 4), # 1
+    ]
+
+    up_stack = [
+        upsample(512, 4, apply_dropout=True), # 2
+        upsample(512, 4, apply_dropout=True), # 4
+        upsample(512, 4, apply_dropout=True), # 8
+        upsample(512, 4), # 16
+        upsample(256, 4), # 32
+        upsample(128, 4), # 64
+        upsample(64, 4), # 128
+    ]
 
     initializer = tf.random_normal_initializer(0., 0.02)
-    last = Conv2D(3, 4, padding='same', activation='tanh', kernel_initializer=initializer)
+    last = Conv2DTranspose(3, 4, strides=(2,2), padding='same', activation='tanh', kernel_initializer=initializer)
+
+    concat = Concatenate()
+
+    # Downsampling through the model
+    skips = []
+    for down in down_stack:
+        x = down(x)
+        skips.append(x)
+
+    skips = list(reversed(skips[:-1]))
+
+    # Upsampling and establishing the skip connections
+    for up, skip in zip(up_stack, skips):
+        x = up(x)
+        x = concat([x, skip])
+
+        
     x = last(x)
 
     return tf.keras.Model(inputs=inputs, outputs=x)
-
 
 def Discriminator():
     initializer = tf.random_normal_initializer(0., 0.02)

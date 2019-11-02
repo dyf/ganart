@@ -2,81 +2,132 @@ import tensorflow as tf
 import numpy as np
 from pathlib import Path
 import re
+import glob
 
-class ScaledImageDataLoader:
-    def __init__(self, basedir='./images'):
-        self.basedir = Path(basedir)
+def escape_path(p):
+    return str(p).encode('unicode-escape').decode()
 
-        self.small_images = list(self.basedir.glob("small/img-small*"))
-        self.large_images = list(self.basedir.glob("large/img-large*"))
+class IndexedImageLoader:
+    def __init__(self, format):
+        self.format = Path(format)
 
-        self.small_shape = (128,128,3)
+        fglob = str(self.format).format(index='*')
         
-        small_idxs = set()
-        for im in self.small_images:
-            toks = re.split('[\.-]',str(im))
-            small_idxs.add(int(toks[-2]))
+        self.image_files = [ Path(p) for p in glob.glob(fglob) ]
 
-        large_idxs = set()
-        for im in self.small_images:
-            toks = re.split('[\.-]',str(im))
-            large_idxs.add(int(toks[-2]))
-        
-        self.all_idxs = sorted(list(small_idxs & large_idxs))    
+        self.idxs = []
+        for im in self.image_files:
+            toks = re.split('[.-]+', str(im))
+            self.idxs.append(int(toks[-2]))
+
+        self.idxs = sorted(self.idxs)
 
     def __len__(self):
-        return len(self.all_idxs)
+        return len(self.idxs)
 
     def square_image(self, image):
         short_size = min(image.shape[0], image.shape[1])
         return image[:short_size, :short_size, :]
 
-    def load_image(self, i):
-        idx = self.all_idxs[i]
+    def load_image(self, i=None, idx=None, square=True):
+        if idx is None:
+            if i is None:
+                raise KeyError("not sure what I'm doing")
 
-        f = tf.io.read_file(str(self.basedir / 'small' / f'img-small-{idx}.jpg'))
-        small_image = (tf.cast(tf.image.decode_jpeg(f), tf.float32) / 127.5) - 1.0
-        f = tf.io.read_file(str(self.basedir / 'large' / f'img-large-{idx}.jpg'))
-        large_image = (tf.cast(tf.image.decode_jpeg(f), tf.float32) / 127.5) - 1.0
+            idx = self.idxs[i]
 
-        small_image = self.square_image(small_image)
-        large_image = self.square_image(large_image)
-
-        if small_image.shape[0] != 200:
-            raise ValueError(f'image {i} has a weird shape: {str(small_image.shape)}')
-        elif large_image.shape[0] != 800:
-            raise ValueError(f'image {i} has a weird shape: {str(large_image.shape)}')
-
-        sf = large_image.shape[0] // small_image.shape[0]
+        f = tf.io.read_file(str(self.format).format(index=idx))
+        image = (tf.cast(tf.image.decode_jpeg(f), tf.float32) / 127.5) - 1.0
         
-        start_sm = np.random.randint(0, small_image.shape[0] - self.small_shape[0], 2)
-        start_lg = start_sm * sf
-        large_shape = (self.small_shape[0]*sf, self.small_shape[1]*sf, 3)
-        return (
-            small_image[start_sm[0]:start_sm[0]+self.small_shape[0],
-                        start_sm[1]:start_sm[1]+self.small_shape[1],:],
-            large_image[start_lg[0]:start_lg[0]+large_shape[0],
-                        start_lg[1]:start_lg[1]+large_shape[1],:]
-        )
+        if square:
+            image = self.square_image(image)
 
+        return image
+    
     def __getitem__(self, idx):
         if isinstance(idx, slice):
             imgs = []
             for i in range(*idx.indices(len(self))):
-                try:
-                    imgs.append(self.load_image(i))
-                except ValueError as e:
-                    print(e)
-            return tf.stack([img[0] for img in imgs]), tf.stack([img[1] for img in imgs])
+                imgs.append(self.load_image(i))                
+            return tf.stack(imgs)
         else:
-            sm, lg = self.load_image(idx)
-            return sm[tf.newaxis, :, :, :], lg[tf.newaxis, :, :, :]
+            return self.load_image(idx)[tf.newaxis,:,:,:]
+
+    def load_patch(self, i, shape):
+        im = self.load_image(i=i, square=True)
+
+        start = np.array([ np.random.randint(0, im.shape[0] - shape[0]), 
+                           np.random.randint(0, im.shape[1] - shape[1]) ])        
+
+        return im[start[0]:start[0]+shape[0],
+                  start[1]:start[1]+shape[1],:]
+    
+    def iter_patch(self, shape, batch_size):
+        for i in range(0, len(self.idxs), batch_size):
+            start_i = i
+            end_i = min(i + batch_size, len(self.idxs))
+
+            imgs = []
+            for ii in range(start_i, end_i):
+                imgs.append(self.load_patch(ii, shape))
+            
+            yield tf.stack(imgs)
+
+class PairedImageLoader:
+    def __init__(self, set_1_format, set_2_format):
+        self.s1_loader = IndexedImageLoader(set_1_format)
+        self.s2_loader = IndexedImageLoader(set_2_format)
+
+        self.idxs = sorted(list(set(self.s1_loader.idxs) & set(self.s2_loader.idxs)))
+
+        self.small_shape = (128,128,3)
+        
+
+    def __len__(self):
+        return len(self.idxs)    
+    
+    def load_image_pair(self, i=None, idx=None, square=True):
+        if idx is None:
+            if i is None:
+                raise KeyError("not sure what I'm doing")
+
+            idx = self.idxs[i]
+
+        return self.s1_loader.load_image(idx=idx, square=square), self.s2_loader.load_image(idx=idx, square=square)
+
+    def load_patch_pair(self, i, shp1):
+        im1, im2 = self.load_image_pair(i=i, square=True)
+
+        sf = im2.shape[0] // im1.shape[0]
+        shp2 = (shp1[0]*sf, shp1[1]*sf)
+
+        start1 = np.array([ np.random.randint(0, im1.shape[0] - shp1[0]), np.random.randint(0, im1.shape[1] - shp1[1]) ])
+        start2 = start1 * sf
+
+        return (
+            im1[start1[0]:start1[0]+shp1[0],
+                start1[1]:start1[1]+shp1[1],:],
+            im2[start2[0]:start2[0]+shp2[0],
+                start2[1]:start2[1]+shp2[1],:]
+        )
+    
+    def iter_patch_pair(self, shape, batch_size):
+        for i in range(0, len(self.idxs), batch_size):
+            start_i = i
+            end_i = min(i + batch_size, len(self.idxs))
+
+            imgs = []
+            for ii in range(start_i, end_i):
+                imgs.append(self.load_patch_pair(ii, shape))
+            
+            yield tf.stack([im[0] for im in imgs]), tf.stack([im[1] for im in imgs])
+            
     
 if __name__ == '__main__':
-    imdl = ScaledImageDataLoader()
-    sm, lg = imdl[:10:2]
-    print(sm.shape)
-    print(lg.shape)
+    imdl = PairedImageLoader('images/small/img-small-{index}.jpg', 'images/large/img-large-{index}.jpg')
+    im1,im2 = imdl.load_image_pair_patch(0, (128,128))
+    print(im1.shape, im2.shape)
+    
     #print(imdl.small_images)
 
 

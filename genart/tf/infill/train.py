@@ -1,6 +1,6 @@
 import tensorflow as tf
-from genart.tf.upscale.model import UpScaleModel, Discriminator
-from genart.gen_photos import PairedImageLoader
+from genart.tf.infill.model import UNet, Discriminator
+from genart.gen_photos import IndexedImageLoader
 import time
 import matplotlib.pyplot as plt
 import os
@@ -31,10 +31,8 @@ def train_step(input_image, target):
     with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
         gen_output = generator(input_image, training=True)
 
-        input_scaled = tf.image.resize(input_image, [512, 512],
-                                       method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-        disc_real_output = discriminator([input_scaled, target], training=True)
-        disc_generated_output = discriminator([input_scaled, gen_output], training=True)
+        disc_real_output = discriminator([input_image, target], training=True)
+        disc_generated_output = discriminator([input_image, gen_output], training=True)
 
         gen_loss = generator_loss(disc_generated_output, gen_output, target)
         disc_loss = discriminator_loss(disc_real_output, disc_generated_output)
@@ -49,16 +47,25 @@ def train_step(input_image, target):
     discriminator_optimizer.apply_gradients(zip(discriminator_gradients,
                                                 discriminator.trainable_variables))
 
+def blanked_im(im):
+    im = im.numpy()
+    im[:,64:192,64:192,:] = 0.0
+    return tf.convert_to_tensor(im)
+
 def fit(train_ds, epochs, batch_size, test_ds):
-    example_input, example_target = next(test_ds.iter_patch_pair((128,128), 1))
+    example_target = test_ds.load_patch(0, (256,256))[tf.newaxis,:,:,:]
+    example_input = blanked_im(example_target)
 
     for epoch in range(epochs):
         start = time.time()
 
         # Train        
         bi = 0
-        for im_small, im_large in train_ds.iter_patch_pair((128,128), batch_size):
-            train_step(im_small, im_large)
+        for im in test_ds.iter_patch((256,256), batch_size):
+            batch_target = im
+            batch_input = blanked_im(im)
+
+            train_step(batch_input, batch_target)
             if bi % 100 == 0:
                 print(f'trained {bi*batch_size} images')
                 generate_images(generator, example_input, example_target, epoch, bi)
@@ -99,15 +106,15 @@ LAMBDA = 100
 EPOCHS = 10
 BATCH_SIZE = 10
 
-data = PairedImageLoader('images/small/img-small-{index}.jpg', 'images/large/img-large-{index}.jpg')
-generator = UpScaleModel()
+data = IndexedImageLoader('images/large/img-large-{index}.jpg')
+generator = UNet()
 discriminator = Discriminator()
 
 generator_optimizer = tf.keras.optimizers.Adam(2e-4, beta_1=0.5)
 discriminator_optimizer = tf.keras.optimizers.Adam(2e-4, beta_1=0.5)
 
-out_dir ='./out_upscale'
-checkpoint_dir = './out_upscale/checkpoints'
+out_dir ='./out_infill'
+checkpoint_dir = './out_infill/checkpoints'
 checkpoint = tf.train.Checkpoint(generator_optimizer=generator_optimizer,
                                  discriminator_optimizer=discriminator_optimizer,
                                  generator=generator,
