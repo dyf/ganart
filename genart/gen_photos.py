@@ -8,8 +8,9 @@ def escape_path(p):
     return str(p).encode('unicode-escape').decode()
 
 class IndexedImageLoader:
-    def __init__(self, format):
+    def __init__(self, format, expected_shape=None):
         self.format = Path(format)
+        self.expected_shape = expected_shape
 
         fglob = str(self.format).format(index='*')
         
@@ -37,10 +38,15 @@ class IndexedImageLoader:
             idx = self.idxs[i]
 
         f = tf.io.read_file(str(self.format).format(index=idx))
+        
         image = (tf.cast(tf.image.decode_jpeg(f), tf.float32) / 127.5) - 1.0
         
         if square:
             image = self.square_image(image)
+
+        if self.expected_shape:
+            if image.shape[0] != self.expected_shape[0] or image.shape[1] != self.expected_shape[1]:
+                raise ValueError("bad shape")
 
         return image
     
@@ -48,7 +54,10 @@ class IndexedImageLoader:
         if isinstance(idx, slice):
             imgs = []
             for i in range(*idx.indices(len(self))):
-                imgs.append(self.load_image(i))                
+                try:
+                    imgs.append(self.load_image(i))                
+                except ValueError as e:
+                    pass
             return tf.stack(imgs)
         else:
             return self.load_image(idx)[tf.newaxis,:,:,:]
@@ -69,8 +78,10 @@ class IndexedImageLoader:
 
             imgs = []
             for ii in range(start_i, end_i):
-                imgs.append(self.load_patch(ii, shape))
-            
+                try:
+                    imgs.append(self.load_patch(ii, shape))
+                except ValueError as e:                    
+                    pass
             yield tf.stack(imgs)
 
 class PairedImageLoader:

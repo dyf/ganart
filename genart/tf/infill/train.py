@@ -53,7 +53,7 @@ def blanked_im(im):
     return tf.convert_to_tensor(im)
 
 def fit(train_ds, epochs, batch_size, test_ds):
-    example_target = test_ds.load_patch(0, (256,256))[tf.newaxis,:,:,:]
+    example_target = next(test_ds.iter_patch((256,256),3))
     example_input = blanked_im(example_target)
 
     for epoch in range(epochs):
@@ -88,25 +88,27 @@ def generate_images(model, test_input, tar, epoch, image_num):
     # the accumulated statistics learned from the training dataset
     # (which we don't want)
     prediction = model(test_input, training=True)
-    plt.figure(figsize=(30,10))
-
-    display_list = [test_input[0], tar[0], prediction[0]]
+    plt.figure(figsize=(10,10))
+    
     title = ['Input Image', 'Ground Truth', 'Predicted Image']
-
-    for i in range(3):
-        plt.subplot(1, 3, i+1)
-        plt.title(title[i])
-        # getting the pixel values between [0, 1] to plot it.
-        plt.imshow(display_list[i] * 0.5 + 0.5)
-        plt.axis('off')
+    nrows = test_input.shape[0]
+    for ri in range(nrows):
+        display_list = [test_input[ri], tar[ri], prediction[ri]]
+        for ci in range(3):
+            plt.subplot(nrows, 3, ri*3 + ci+1)
+            if ri == 0:
+                plt.title(title[ci])
+            # getting the pixel values between [0, 1] to plot it.
+            plt.imshow(display_list[ci] * 0.5 + 0.5)
+            plt.axis('off')
     plt.savefig(f'{out_dir}/test_{epoch:04d}_{image_num:05d}.png')
     plt.close()
 
 LAMBDA = 100
-EPOCHS = 10
+EPOCHS = 100
 BATCH_SIZE = 10
 
-data = IndexedImageLoader('images/large/img-large-{index}.jpg')
+data = IndexedImageLoader('images/large/img-large-{index}.jpg', expected_shape=(800,800))
 generator = UNet()
 discriminator = Discriminator()
 
