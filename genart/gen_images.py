@@ -184,12 +184,14 @@ def render_shape_sets(n, shape, img_sizes, n_min, n_max, dtype=np.float32):
 
 
 if __name__ == "__main__":
-    shp = (300,300,3)
-    im = render_shape_sets(5, None, [shp,shp], 2, 5)
+    shp = (512,512,3)
+    im = render_shape_sets(1, None, [shp,shp], 10, 10)
     
     import matplotlib.pyplot as plt
     plt.imshow(im[1][0])
-    plt.show()
+    plt.axis('off')
+    plt.show()    
+    plt.savefig('test.png')
 
         
 
