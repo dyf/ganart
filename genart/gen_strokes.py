@@ -6,8 +6,8 @@ import imageio
 
 def place_strokes(shape, stroke_width):
     xx,yy = np.meshgrid(
-        np.linspace(0.5, shape[0]-0.5, int(shape[0] / stroke_width*2)),
-        np.linspace(0.5, shape[1]-0.5, int(shape[1] / stroke_width*2))
+        np.linspace(0.5, shape[0]-0.5, int(shape[0] / stroke_width*2 / 0.75)),
+        np.linspace(0.5, shape[1]-0.5, int(shape[1] / stroke_width*2 / 0.75))
     )
         
     stroke_positions = np.array(list(zip(xx.ravel(), yy.ravel())))
@@ -132,10 +132,10 @@ if __name__ == "__main__":
 
     
 
-    #img = imageio.imread("octopus.png")[:,:,:3]
+    img = imageio.imread("octopus.png")[:,:,:3].astype(int)
     
 
     print(img.shape)
-    simg = stroke_image(img, 5, gscale=0.003)
+    simg = stroke_image(img, 20, gscale=0.05)
 
 
