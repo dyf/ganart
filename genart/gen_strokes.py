@@ -37,7 +37,22 @@ def image_window(img, pos, stroke_width):
 
 def image_gradient(gx, gy, pos, stroke_width):    
     gxw, gyw = image_window(gx, pos, stroke_width), image_window(gy, pos, stroke_width)    
-    return gxw.mean(axis=None), gyw.mean(axis=None)
+    return gxw.mean(axis=(0,1)), gyw.mean(axis=(0,1))
+
+def image_orientation(gx, gy, pos, stroke_width):
+    gxm, gym = image_gradient(gx, gy, pos, stroke_width)
+
+    a = np.dot(gxm, gxm)
+    b = np.dot(gym, gym)
+    c = np.dot(gxm, gym)
+
+    #lam1 = a + b + np.sqrt((a-b)**2 + 4*a*c)*0.5
+    #lam2 = a + b - np.sqrt((a-b)**2 + 4*a*c)*0.5
+
+    return a - b + np.sqrt((a-b)**2 +4*c*c), 2*c
+
+
+
 
 def choose_stroke_color(img, pos, stroke_width):
     colors = image_window(img, pos, stroke_width)
@@ -50,19 +65,31 @@ def choose_stroke_color(img, pos, stroke_width):
     mode_idx = np.argmax(counts)
     return unique_colors[mode_idx]
 
-def stroke(ax, pos, w, color, gx, gy):    
+def stroke(ax, pos, w, color, ox, oy):    
     color = color / 255.0
-    if gx == 0.0 and gy == 0.0:
-        prim = mpatches.Circle((pos[1], pos[0]), radius=w*0.5, color=color)        
+    if ox == 0.0 and oy == 0.0:
+        return#prim = mpatches.Circle((pos[1], pos[0]), radius=w*0.5, color=color)        
     else:
-        prim = mlines.Line2D((pos[1]+gx,pos[1]-gx),
-                             (pos[0]-gy,pos[0]+gy),
-                             linewidth=w*2,
-                             solid_capstyle='round',
-                             color=color)
-    
-    ax.add_artist(prim)
-    
+        or_g = [ox,oy]
+        gmag = np.linalg.norm(or_g)
+        or_g /= gmag
+
+        or_t = [-oy, ox]
+        or_t /= np.linalg.norm(or_t)
+
+        p0 = pos - or_t*gmag
+        p1 = pos + or_t*gmag
+
+        ax.add_artist(mpatches.Polygon([ p0 + or_g*w*0.5, 
+                                         p0 - or_g*w*0.5,
+                                         p1 - or_g*w*0.5,
+                                         p1 + or_g*w*0.5],
+                                        closed=True,
+                                        facecolor=color,
+                                        edgecolor=None))
+        ax.add_artist(mpatches.Circle(p0, radius=w*0.5, facecolor=color, edgecolor=None))
+        ax.add_artist(mpatches.Circle(p1, radius=w*0.5, facecolor=color, edgecolor=None))
+                             
 
 def stroke_image(img, stroke_width, stroke_length=None, curved=False, gscale=1.0):    
     stroke_positions = place_strokes(img.shape, stroke_width)
@@ -78,8 +105,8 @@ def stroke_image(img, stroke_width, stroke_length=None, curved=False, gscale=1.0
         
     for p in stroke_positions:
         color = choose_stroke_color(img, p, stroke_width)
-        gxs, gys = image_gradient(gx, gy, p, stroke_width)
-        stroke(ax2, p, stroke_width, color, gxs*gscale, gys*gscale)
+        ox, oy = image_orientation(gx, gy, p, stroke_width)        
+        stroke(ax2, p, stroke_width, color, ox*gscale, oy*gscale)
     plt.show()
     return fig
 
@@ -89,17 +116,18 @@ if __name__ == "__main__":
     img.fill(0)
     xx,yy = np.meshgrid(np.linspace(0,1,shape[0]), np.linspace(0,1,shape[1]))
     
-    mask = (xx-0.5)**2 + (yy-0.5)**2 < .1
+    mask = (xx-0.25)**2 + (yy-0.25)**2 < 0.05
+    #mask = xx < yy
     img[mask,0] = 255
 
-    mask = xx > yy
+    mask = xx >= yy
     img[mask,1] = 255
     
 
-    #img = imageio.imread("c:/Users/davidf/workspace/genart/octopus5.png")[:,:,:3]
+    #img = imageio.imread("octopus.png")[:,:,:3]
     
 
     print(img.shape)
-    simg = stroke_image(img, 8, gscale=0.5)
+    simg = stroke_image(img, 5, gscale=0.003)
 
 
