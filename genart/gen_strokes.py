@@ -67,14 +67,18 @@ def choose_stroke_color(img, pos, stroke_width):
 
 def stroke(ax, pos, w, color, ox, oy):    
     color = color / 255.0
+
+    # rendering is transposed from indexing
+    pos = [pos[1], pos[0]]    
+
     if ox == 0.0 and oy == 0.0:
         return#prim = mpatches.Circle((pos[1], pos[0]), radius=w*0.5, color=color)        
     else:
-        or_g = [ox,oy]
+        or_g = [oy, ox]
         gmag = np.linalg.norm(or_g)
         or_g /= gmag
 
-        or_t = [-oy, ox]
+        or_t = [-or_g[1], or_g[0]]
         or_t /= np.linalg.norm(or_t)
 
         p0 = pos - or_t*gmag
@@ -116,12 +120,16 @@ if __name__ == "__main__":
     img.fill(0)
     xx,yy = np.meshgrid(np.linspace(0,1,shape[0]), np.linspace(0,1,shape[1]))
     
-    mask = (xx-0.25)**2 + (yy-0.25)**2 < 0.05
+    mask = (xx-0.25)**2 + (yy-0.75)**2 < 0.05
     #mask = xx < yy
     img[mask,0] = 255
-
+    
     mask = xx >= yy
     img[mask,1] = 255
+
+    mask = (xx-0.5)**2 + (yy-0.5)**2 < 0.05
+    img[mask,2] = 255
+
     
 
     #img = imageio.imread("octopus.png")[:,:,:3]
