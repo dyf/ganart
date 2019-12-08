@@ -52,8 +52,6 @@ def image_orientation(gx, gy, pos, stroke_width):
     return a - b + np.sqrt((a-b)**2 +4*c*c), 2*c
 
 
-
-
 def choose_stroke_color(img, pos, stroke_width):
     colors = image_window(img, pos, stroke_width)
     colors = colors.reshape(-1, img.shape[-1])
@@ -65,14 +63,18 @@ def choose_stroke_color(img, pos, stroke_width):
     mode_idx = np.argmax(counts)
     return unique_colors[mode_idx]
 
-def stroke(ax, pos, w, color, ox, oy):    
+def stroke(pos, w, color, ox, oy):
     color = color / 255.0
 
     # rendering is transposed from indexing
     pos = [pos[1], pos[0]]    
 
+    artists = []
+
     if ox == 0.0 and oy == 0.0:
-        return#prim = mpatches.Circle((pos[1], pos[0]), radius=w*0.5, color=color)        
+        artists += [
+            mpatches.Circle(pos, radius=w*0.5, color=color)
+        ]
     else:
         or_g = [oy, ox]
         gmag = np.linalg.norm(or_g)
@@ -84,16 +86,19 @@ def stroke(ax, pos, w, color, ox, oy):
         p0 = pos - or_t*gmag
         p1 = pos + or_t*gmag
 
-        ax.add_artist(mpatches.Polygon([ p0 + or_g*w*0.5, 
-                                         p0 - or_g*w*0.5,
-                                         p1 - or_g*w*0.5,
-                                         p1 + or_g*w*0.5],
-                                        closed=True,
-                                        facecolor=color,
-                                        edgecolor=None))
-        ax.add_artist(mpatches.Circle(p0, radius=w*0.5, facecolor=color, edgecolor=None))
-        ax.add_artist(mpatches.Circle(p1, radius=w*0.5, facecolor=color, edgecolor=None))
-                             
+        artists += [
+            mpatches.Polygon([ p0 + or_g*w*0.5, 
+                               p0 - or_g*w*0.5,
+                               p1 - or_g*w*0.5,
+                               p1 + or_g*w*0.5],
+                             closed=True,
+                             facecolor=color,
+                             edgecolor=None),
+            mpatches.Circle(p0, radius=w*0.5, facecolor=color, edgecolor=None),
+            mpatches.Circle(p1, radius=w*0.5, facecolor=color, edgecolor=None)
+        ]
+
+    return artists                             
 
 def stroke_image(img, stroke_width, stroke_length=None, curved=False, gscale=1.0):    
     stroke_positions = place_strokes(img.shape, stroke_width)
@@ -110,7 +115,11 @@ def stroke_image(img, stroke_width, stroke_length=None, curved=False, gscale=1.0
     for p in stroke_positions:
         color = choose_stroke_color(img, p, stroke_width)
         ox, oy = image_orientation(gx, gy, p, stroke_width)        
-        stroke(ax2, p, stroke_width, color, ox*gscale, oy*gscale)
+        artists = stroke(p, stroke_width, color, ox*gscale, oy*gscale)
+
+        for artist in artists:
+            ax2.add_artist(artist)
+
     plt.show()
     return fig
 
@@ -132,7 +141,7 @@ if __name__ == "__main__":
 
     
 
-    img = imageio.imread("octopus.png")[:,:,:3].astype(int)
+    img = imageio.imread("octopus5.png")[:,:,:3].astype(int)
     
 
     print(img.shape)
