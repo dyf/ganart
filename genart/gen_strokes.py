@@ -3,6 +3,10 @@ import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
 import imageio
+import copy 
+import scipy.ndimage
+import scipy.signal
+
 
 def place_strokes(shape, stroke_width):
     xx,yy = np.meshgrid(
@@ -100,27 +104,81 @@ def stroke(pos, w, color, ox, oy):
 
     return artists                             
 
-def stroke_image(img, stroke_width, stroke_length=None, curved=False, gscale=1.0):    
+def stroke_height(artists, shape, dpi=100):   
+    fig = plt.figure(figsize=(shape[0]/dpi,shape[1]/dpi))
+    ax = plt.axes([0,0,1,1])
+
+    for artist in artists:
+        artist = copy.copy(artist)
+        artist.set_facecolor('black')
+        ax.add_artist(artist)
+
+    
+    ax.axis('square')
+    ax.axis('off')
+    ax.set_xlim((0,shape[1]))
+    ax.set_ylim((0,shape[0]))
+    ax.invert_yaxis()
+
+    fig.canvas.draw()
+    img = np.array(fig.canvas.renderer.buffer_rgba())    
+    plt.close(fig)
+    
+    dist = scipy.ndimage.distance_transform_edt(img[:,:,0]==0)
+    dmax = dist.max()
+    dnz = dist > 0
+    dist[dnz] = np.power(dmax - dist[dnz], 0.8) + 1
+    return dist
+
+def emboss(img, dir='above', k=2):
+    xx,yy = np.meshgrid(np.arange(-k,k+1), np.arange(-k,k+1))
+
+    kernel = np.zeros(xx.shape, dtype=int)
+    if dir == 'above':
+        kernel[(yy < 0) & (xx == 0)] = 1
+        kernel[(yy > 0) & (xx == 0)] = -1
+    else:
+        raise Exception(f"direction unknown: {dir}")
+
+    return scipy.signal.convolve2d(img, kernel, boundary='symm')
+
+
+def stroke_image(img, stroke_width, stroke_length=None, curved=False, gscale=1.0):
     stroke_positions = place_strokes(img.shape, stroke_width)
 
     gx, gy, gz = np.gradient(img)    
 
-    fig, (ax1,ax2) = plt.subplots(1,2)
+    fig, (ax1,ax2,ax3) = plt.subplots(1, 3)
     ax1.imshow(img)
     ax2.axis('square')
     ax2.set_xlim((0,img.shape[1]))
     ax2.set_ylim((0,img.shape[0]))
     ax2.invert_yaxis()
+
+    ax3.invert_yaxis()
+
+    height_im = np.zeros((img.shape[0], img.shape[1]), dtype=float)
         
     for p in stroke_positions:
         color = choose_stroke_color(img, p, stroke_width)
         ox, oy = image_orientation(gx, gy, p, stroke_width)        
         artists = stroke(p, stroke_width, color, ox*gscale, oy*gscale)
+        
+        ph = stroke_height(artists, img.shape)
+        
+        height_im[ph>0] = ph[ph>0]
 
         for artist in artists:
-            ax2.add_artist(artist)
+            ax2.add_artist(artist)        
 
+    
+    r = np.abs(np.random.normal(scale=0.5, size=height_im.shape))
+    height_im = emboss(height_im + r) 
+    
+    ax3.imshow(height_im, cmap='gray')
     plt.show()
+
+    ax2.imshow(height_im*255, cmap='gray')#, alpha=0.9)
     return fig
 
 if __name__ == "__main__":
