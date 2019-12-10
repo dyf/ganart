@@ -105,25 +105,7 @@ def stroke(pos, w, color, ox, oy):
     return artists                             
 
 def stroke_height(artists, shape, dpi=100):   
-    fig = plt.figure(figsize=(shape[0]/dpi,shape[1]/dpi))
-    ax = plt.axes([0,0,1,1])
-
-    for artist in artists:
-        artist = copy.copy(artist)
-        artist.set_facecolor('black')
-        ax.add_artist(artist)
-
-    
-    ax.axis('square')
-    ax.axis('off')
-    ax.set_xlim((0,shape[1]))
-    ax.set_ylim((0,shape[0]))
-    ax.invert_yaxis()
-
-    fig.canvas.draw()
-    img = np.array(fig.canvas.renderer.buffer_rgba())    
-    plt.close(fig)
-    
+    img = render_artists(artists, shape, facecolor='black', dpi=dpi)        
     dist = scipy.ndimage.distance_transform_edt(img[:,:,0]==0)
     dmax = dist.max()
     dnz = dist > 0
@@ -140,25 +122,54 @@ def emboss(img, dir='above', k=2):
     else:
         raise Exception(f"direction unknown: {dir}")
 
-    return scipy.signal.convolve2d(img, kernel, boundary='symm')
+    outim = scipy.signal.convolve2d(img, kernel, boundary='symm')
+    return outim[k:-k,k:-k]
 
+def render_artists(artists, shape, facecolor=None, dpi=100):
+    fig = plt.figure(figsize=(shape[0]/dpi,shape[1]/dpi))
+    ax = plt.axes([0,0,1,1])
 
-def stroke_image(img, stroke_width, stroke_length=None, curved=False, gscale=1.0):
-    stroke_positions = place_strokes(img.shape, stroke_width)
+    for artist in artists:
+        artist = copy.copy(artist)
+        if facecolor:
+            artist.set_facecolor(facecolor)
+        ax.add_artist(artist)
 
-    gx, gy, gz = np.gradient(img)    
+    
+    ax.axis('square')
+    ax.axis('off')
+    ax.set_xlim((0,shape[1]))
+    ax.set_ylim((0,shape[0]))
+    ax.invert_yaxis()
 
+    fig.canvas.draw()
+    img = np.array(fig.canvas.renderer.buffer_rgba())    
+    plt.close(fig)
+
+    return img
+
+def stroke_image(img, stroke_width, stroke_length=None, curved=False, gscale=1.0, out_width=None):
+    if out_width is None:
+        out_width = img.shape[1]
+        
     fig, (ax1,ax2,ax3) = plt.subplots(1, 3)
     ax1.imshow(img)
     ax2.axis('square')
     ax2.set_xlim((0,img.shape[1]))
     ax2.set_ylim((0,img.shape[0]))
     ax2.invert_yaxis()
-
     ax3.invert_yaxis()
 
+    gx, gy, gz = np.gradient(img)    
+    
+    scale_factor = float(out_width) / img.shape[1]
+    out_shape = ( int(scale_factor*img.shape[0]), int(scale_factor*img.shape[1]) )    
+    out_stroke_width = stroke_width * scale_factor
+
+    stroke_positions = place_strokes(img.shape, stroke_width)
     height_im = np.zeros((img.shape[0], img.shape[1]), dtype=float)
         
+    all_artists = []
     for p in stroke_positions:
         color = choose_stroke_color(img, p, stroke_width)
         ox, oy = image_orientation(gx, gy, p, stroke_width)        
@@ -168,17 +179,17 @@ def stroke_image(img, stroke_width, stroke_length=None, curved=False, gscale=1.0
         
         height_im[ph>0] = ph[ph>0]
 
-        for artist in artists:
-            ax2.add_artist(artist)        
-
+        all_artists += artists
     
     r = np.abs(np.random.normal(scale=0.5, size=height_im.shape))
-    height_im = emboss(height_im + r) 
+    height_im = emboss(height_im*5 + r)   
     
-    ax3.imshow(height_im, cmap='gray')
+    ax2.imshow(height_im, cmap='gray')
+    
+    line_im = render_artists(all_artists, img.shape)[:,:,:3]
+    composite = np.clip(line_im.astype(float) + np.dstack([height_im, height_im, height_im]), 0, 255).astype(np.uint8)
+    ax3.imshow(composite)#, alpha=0.9)
     plt.show()
-
-    ax2.imshow(height_im*255, cmap='gray')#, alpha=0.9)
     return fig
 
 if __name__ == "__main__":
@@ -203,6 +214,6 @@ if __name__ == "__main__":
     
 
     print(img.shape)
-    simg = stroke_image(img, 20, gscale=0.05)
+    simg = stroke_image(img, 10, gscale=0.05, out_width=500)
 
 
