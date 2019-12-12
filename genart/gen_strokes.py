@@ -7,7 +7,85 @@ import copy
 import scipy.ndimage
 import scipy.signal
 
+from dataclasses import dataclass
+from typing import Tuple
 
+DPI = 1.0
+
+@dataclass
+class Circle:
+    pos: Tuple[float, float]
+    radius: float
+    color: Tuple[float, float, float]
+
+    def make_artists(self):
+        return [
+            mpatches.Circle(xy=self.pos, radius=self.radius, color=self.color)
+        ]
+    
+    def make_skeleton_artists(self, color):
+        return [
+            mpatches.Circle(xy=self.pos, radius=0.5, color=color, antialiased=False)
+        ]
+
+@dataclass
+class OrientedLine:
+    pos: Tuple[float, float]
+    ori: Tuple[float, float]
+    width: float
+    length: float
+    color: Tuple[float, float, float]
+
+    def compute_endpoints(self):
+        return [ self.pos - self.ori*self.length*0.5,
+                 self.pos + self.ori*self.length*0.5 ]
+
+    def compute_rect(self, p0, p1):       
+        or_t = [-self.ori[1], self.ori[0]]
+        or_t /= np.linalg.norm(or_t)
+
+        hw = self.width*0.5
+
+        return [ 
+            p0 + or_t*hw,
+            p0 - or_t*hw,
+            p1 - or_t*hw,
+            p1 + or_t*hw 
+        ]
+
+    def make_artists(self):
+        p0, p1 = self.compute_endpoints()
+        rect = self.compute_rect(p0, p1)
+        
+        hw = self.width*0.5
+
+        return [
+            mpatches.Polygon(rect,
+                             closed=True,
+                             facecolor=self.color,
+                             edgecolor=None),
+            mpatches.Circle(p0, radius=hw, facecolor=self.color, edgecolor=None),
+            mpatches.Circle(p1, radius=hw, facecolor=self.color, edgecolor=None)
+        ]
+    
+    def make_skeleton_artists(self, color):
+        p0, p1 = self.compute_endpoints()
+        return [
+            mlines.Line2D([ p0[0], p1[0] ], 
+                          [ p0[1], p1[1] ],
+                          linewidth=1,
+                          color=color,
+                          antialiased=False)
+        ]
+
+class Renderer:
+    def draw_skeleton(self, artists):
+        pass
+
+    def draw(self, artists):
+        pass
+
+    
 def place_strokes(shape, stroke_width):
     xx,yy = np.meshgrid(
         np.linspace(0.5, shape[0]-0.5, int(shape[0] / stroke_width*2 / 0.75)),
@@ -67,50 +145,39 @@ def choose_stroke_color(img, pos, stroke_width):
     mode_idx = np.argmax(counts)
     return unique_colors[mode_idx]
 
-def stroke(pos, w, color, ox, oy):
+def make_stroke(pos, w, color, ox, oy):
     color = color / 255.0
 
     # rendering is transposed from indexing
     pos = [pos[1], pos[0]]    
 
-    artists = []
+    shapes = []
 
     if ox == 0.0 and oy == 0.0:
-        artists += [
-            mpatches.Circle(pos, radius=w*0.5, color=color)
-        ]
+        circle = Circle(pos=pos, radius=w*0.5, color=color)
+        shapes.append(circle)
     else:
-        or_g = [oy, ox]
+        or_g = [ oy, ox ]
         gmag = np.linalg.norm(or_g)
         or_g /= gmag
 
-        or_t = [-or_g[1], or_g[0]]
+        or_t = [ -or_g[1], or_g[0] ]
         or_t /= np.linalg.norm(or_t)
 
-        p0 = pos - or_t*gmag
-        p1 = pos + or_t*gmag
+        line = OrientedLine(pos=pos, ori=or_t, width=w, length=gmag, color=color)
+        shapes.append(line)
 
-        artists += [
-            mpatches.Polygon([ p0 + or_g*w*0.5, 
-                               p0 - or_g*w*0.5,
-                               p1 - or_g*w*0.5,
-                               p1 + or_g*w*0.5],
-                             closed=True,
-                             facecolor=color,
-                             edgecolor=None),
-            mpatches.Circle(p0, radius=w*0.5, facecolor=color, edgecolor=None),
-            mpatches.Circle(p1, radius=w*0.5, facecolor=color, edgecolor=None)
-        ]
+    return shapes                             
 
-    return artists                             
+def stroke_height(shapes, img_shape, max_height):   
+    artists = [ a for s in shapes for a in s.make_skeleton_artists('black') ]
+    img = render_artists(artists, img_shape)
 
-def stroke_height(artists, shape, dpi=100):   
-    img = render_artists(artists, shape, facecolor='black', dpi=dpi)        
-    dist = scipy.ndimage.distance_transform_edt(img[:,:,0]==0)
-    dmax = dist.max()
-    dnz = dist > 0
-    dist[dnz] = np.power(dmax - dist[dnz], 0.8) + 1
-    return dist
+    dist = scipy.ndimage.distance_transform_edt(img[:,:,0]>0)
+    dist[dist > max_height] = 0
+    dist /= max_height
+
+    return np.power(dist, 1.5)
 
 def emboss(img, dir='above', k=2):
     xx,yy = np.meshgrid(np.arange(-k,k+1), np.arange(-k,k+1))
@@ -125,14 +192,12 @@ def emboss(img, dir='above', k=2):
     outim = scipy.signal.convolve2d(img, kernel, boundary='symm')
     return outim[k:-k,k:-k]
 
-def render_artists(artists, shape, facecolor=None, dpi=100):
-    fig = plt.figure(figsize=(shape[0]/dpi,shape[1]/dpi))
+def render_artists(artists, shape):
+    fig = plt.figure(figsize=(shape[1],shape[0]), dpi=DPI)
     ax = plt.axes([0,0,1,1])
 
     for artist in artists:
         artist = copy.copy(artist)
-        if facecolor:
-            artist.set_facecolor(facecolor)
         ax.add_artist(artist)
 
     
@@ -167,25 +232,22 @@ def stroke_image(img, stroke_width, stroke_length=None, curved=False, gscale=1.0
     out_stroke_width = stroke_width * scale_factor
 
     stroke_positions = place_strokes(img.shape, stroke_width)
-    height_im = np.zeros((img.shape[0], img.shape[1]), dtype=float)
         
-    all_artists = []
+    all_shapes = []
     for p in stroke_positions:
         color = choose_stroke_color(img, p, stroke_width)
         ox, oy = image_orientation(gx, gy, p, stroke_width)        
-        artists = stroke(p, stroke_width, color, ox*gscale, oy*gscale)
-        
-        ph = stroke_height(artists, img.shape)
-        
-        height_im[ph>0] = ph[ph>0]
+        shapes = make_stroke(p, stroke_width, color, ox*gscale, oy*gscale)
 
-        all_artists += artists
+        all_shapes += shapes
+
+    height_im = stroke_height(all_shapes, img.shape, stroke_width*0.5)
     
-    r = np.abs(np.random.normal(scale=0.5, size=height_im.shape))
-    height_im = emboss(height_im*5 + r)   
-    
+    r = np.abs(np.random.normal(scale=0.3, size=height_im.shape))
+    height_im = emboss(height_im*30 + r)   
     ax2.imshow(height_im, cmap='gray')
     
+    all_artists = [ a for s in all_shapes for a in s.make_artists() ]
     line_im = render_artists(all_artists, img.shape)[:,:,:3]
     composite = np.clip(line_im.astype(float) + np.dstack([height_im, height_im, height_im]), 0, 255).astype(np.uint8)
     ax3.imshow(composite)#, alpha=0.9)
@@ -193,6 +255,7 @@ def stroke_image(img, stroke_width, stroke_length=None, curved=False, gscale=1.0
     return fig
 
 if __name__ == "__main__":
+    DPI = 0.5
     shape = (128,128)
     img = (np.random.random((shape[0],shape[1],3))*2).astype(int)*255
     img.fill(0)
@@ -210,10 +273,10 @@ if __name__ == "__main__":
 
     
 
-    img = imageio.imread("octopus5.png")[:,:,:3].astype(int)
+    img = imageio.imread("octopus.png")[::3,::3,:3].astype(int)
     
 
     print(img.shape)
-    simg = stroke_image(img, 10, gscale=0.05, out_width=500)
+    simg = stroke_image(img, 10, gscale=0.05 , out_width=500)
 
 
