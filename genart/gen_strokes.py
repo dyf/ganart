@@ -29,50 +29,55 @@ class Circle:
         ]
 
 @dataclass
-class OrientedLine:
+class GradientLine:
     pos: Tuple[float, float]
-    ori: Tuple[float, float]
+    gradient: Tuple[float, float]
     width: float
-    length: float
     color: Tuple[float, float, float]
 
-    def compute_endpoints(self):
-        return [ self.pos - self.ori*self.length*0.5,
-                 self.pos + self.ori*self.length*0.5 ]
+    length: float = 0.0
+    p0: Tuple[float, float] = (0.0, 0.0)
+    p1: Tuple[float, float] = (0.0, 0.0)
+    v_dir: Tuple[float, float] = (0.0, 0.0)
+    v_tan: Tuple[float, float] = (0.0, 0.0)
 
-    def compute_rect(self, p0, p1):       
-        or_t = [-self.ori[1], self.ori[0]]
-        or_t /= np.linalg.norm(or_t)
 
+    def __post_init__(self):
+        self.length = np.linalg.norm(self.gradient)
+        self.v_tan = np.array(self.gradient) / self.length
+
+        self.v_dir = np.array([ -self.v_tan[1], self.v_tan[0] ])
+        self.v_dir /= np.linalg.norm(self.v_dir)
+
+        self.p0 = self.pos - self.v_dir*self.length*0.5 
+        self.p1 = self.pos + self.v_dir*self.length*0.5 
+
+    def compute_rect(self):
         hw = self.width*0.5
 
         return [ 
-            p0 + or_t*hw,
-            p0 - or_t*hw,
-            p1 - or_t*hw,
-            p1 + or_t*hw 
+            self.p0 + self.v_tan*hw,
+            self.p0 - self.v_tan*hw,
+            self.p1 - self.v_tan*hw,
+            self.p1 + self.v_tan*hw 
         ]
 
     def make_artists(self):
-        p0, p1 = self.compute_endpoints()
-        rect = self.compute_rect(p0, p1)
-        
         hw = self.width*0.5
 
         return [
-            mpatches.Polygon(rect,
+            mpatches.Polygon(self.compute_rect(),
                              closed=True,
                              facecolor=self.color,
                              edgecolor=None),
-            mpatches.Circle(p0, radius=hw, facecolor=self.color, edgecolor=None),
-            mpatches.Circle(p1, radius=hw, facecolor=self.color, edgecolor=None)
+            mpatches.Circle(self.p0, radius=hw, facecolor=self.color, edgecolor=None),
+            mpatches.Circle(self.p1, radius=hw, facecolor=self.color, edgecolor=None)
         ]
     
     def make_skeleton_artists(self, color):
-        p0, p1 = self.compute_endpoints()
         return [
-            mlines.Line2D([ p0[0], p1[0] ], 
-                          [ p0[1], p1[1] ],
+            mlines.Line2D([ self.p0[0], self.p1[0] ], 
+                          [ self.p0[1], self.p1[1] ],
                           linewidth=1,
                           color=color,
                           antialiased=False)
@@ -157,14 +162,7 @@ def make_stroke(pos, w, color, ox, oy):
         circle = Circle(pos=pos, radius=w*0.5, color=color)
         shapes.append(circle)
     else:
-        or_g = [ oy, ox ]
-        gmag = np.linalg.norm(or_g)
-        or_g /= gmag
-
-        or_t = [ -or_g[1], or_g[0] ]
-        or_t /= np.linalg.norm(or_t)
-
-        line = OrientedLine(pos=pos, ori=or_t, width=w, length=gmag, color=color)
+        line = GradientLine(pos=pos, gradient=[ oy, ox ], width=w, color=color)
         shapes.append(line)
 
     return shapes                             
