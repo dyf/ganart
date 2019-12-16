@@ -7,50 +7,47 @@ import copy
 import scipy.ndimage
 import scipy.signal
 
+import skimage.feature as skf
+import skimage.transform as skt
+
 from dataclasses import dataclass
 from typing import Tuple
 
 DPI = 1.0
 
+@dataclass 
+class Shape:
+    color: Tuple[float, float, float]
+
+    def _defcol(self, color):
+        return self.color if color is None else color
+
 @dataclass
-class Circle:
+class Circle(Shape):
     pos: Tuple[float, float]
     radius: float
-    color: Tuple[float, float, float]
 
-    def make_artists(self):
+    def make_artists(self, color=None):
         return [
-            mpatches.Circle(xy=self.pos, radius=self.radius, color=self.color)
+            mpatches.Circle(xy=self.pos, radius=self.radius, color=self._defcol(color))
         ]
     
-    def make_skeleton_artists(self, color):
+    def make_skeleton_artists(self, color=None):
         return [
-            mpatches.Circle(xy=self.pos, radius=0.5, color=color, antialiased=False)
+            mpatches.Circle(xy=self.pos, radius=0.5, color=self._defcol(color), antialiased=False)
         ]
 
 @dataclass
-class GradientLine:
-    pos: Tuple[float, float]
-    gradient: Tuple[float, float]
-    width: float
-    color: Tuple[float, float, float]
-
-    length: float = 0.0
+class Line(Shape):
     p0: Tuple[float, float] = (0.0, 0.0)
     p1: Tuple[float, float] = (0.0, 0.0)
-    v_dir: Tuple[float, float] = (0.0, 0.0)
+    width: float = 0.0
     v_tan: Tuple[float, float] = (0.0, 0.0)
 
-
     def __post_init__(self):
-        self.length = np.linalg.norm(self.gradient)
-        self.v_tan = np.array(self.gradient) / self.length
-
-        self.v_dir = np.array([ -self.v_tan[1], self.v_tan[0] ])
-        self.v_dir /= np.linalg.norm(self.v_dir)
-
-        self.p0 = self.pos - self.v_dir*self.length*0.5 
-        self.p1 = self.pos + self.v_dir*self.length*0.5 
+        dp = np.array(self.p1) - np.array(self.p0)
+        self.v_tan = np.array([ -dp[1], dp[0] ]).astype(float)
+        self.v_tan /= np.linalg.norm(self.v_tan)
 
     def compute_rect(self):
         hw = self.width*0.5
@@ -62,16 +59,16 @@ class GradientLine:
             self.p1 + self.v_tan*hw 
         ]
 
-    def make_artists(self):
+    def make_artists(self, color=None):
         hw = self.width*0.5
 
         return [
             mpatches.Polygon(self.compute_rect(),
                              closed=True,
-                             facecolor=self.color,
+                             facecolor=self._defcol(color),
                              edgecolor=None),
-            mpatches.Circle(self.p0, radius=hw, facecolor=self.color, edgecolor=None),
-            mpatches.Circle(self.p1, radius=hw, facecolor=self.color, edgecolor=None)
+            mpatches.Circle(self.p0, radius=hw, facecolor=self._defcol(color), edgecolor=None),
+            mpatches.Circle(self.p1, radius=hw, facecolor=self._defcol(color), edgecolor=None)
         ]
     
     def make_skeleton_artists(self, color):
@@ -83,6 +80,23 @@ class GradientLine:
                           antialiased=False)
         ]
 
+@dataclass
+class GradientLine(Line):
+    pos: Tuple[float, float] = (0.0, 0.0)
+    gradient: Tuple[float, float] = (0.0, 0.0)
+    
+    def __post_init__(self):
+        length = np.linalg.norm(self.gradient)
+        self.v_tan = np.array(self.gradient) / length
+
+        v_dir = np.array([ -self.v_tan[1], self.v_tan[0] ])
+        v_dir /= np.linalg.norm(v_dir)
+
+        self.p0 = self.pos - v_dir*length*0.5 
+        self.p1 = self.pos + v_dir*length*0.5 
+
+    
+
 class Renderer:
     def draw_skeleton(self, artists):
         pass
@@ -90,6 +104,15 @@ class Renderer:
     def draw(self, artists):
         pass
 
+def detect_edges(img):
+    edges = [] 
+    for i in range(img.shape[2]):
+        edges.append(skf.canny(img[:,:,i], 2, 1, 25))
+    
+    
+    edges = np.array(edges).max(axis=0)
+
+    return skt.probabilistic_hough_line(edges, threshold=10, line_length=10, line_gap=3)
     
 def place_strokes(shape, stroke_width):
     xx,yy = np.meshgrid(
@@ -150,8 +173,7 @@ def choose_stroke_color(img, pos, stroke_width):
     mode_idx = np.argmax(counts)
     return unique_colors[mode_idx]
 
-def make_stroke(pos, w, color, ox, oy):
-    color = color / 255.0
+def make_stroke(pos, w, color, ox, oy): 
 
     # rendering is transposed from indexing
     pos = [pos[1], pos[0]]    
@@ -167,8 +189,8 @@ def make_stroke(pos, w, color, ox, oy):
 
     return shapes                             
 
-def stroke_height(shapes, img_shape, max_height):   
-    artists = [ a for s in shapes for a in s.make_skeleton_artists('black') ]
+def stroke_height_simple(shapes, img_shape, max_height):   
+    artists = [ a for s in shapes for a in s.make_skeleton_artists(color='black') ]
     img = render_artists(artists, img_shape)
 
     dist = scipy.ndimage.distance_transform_edt(img[:,:,0]>0)
@@ -176,6 +198,28 @@ def stroke_height(shapes, img_shape, max_height):
     dist /= max_height
 
     return np.power(dist, 1.5)
+
+def stroke_height_full(shapes, img_shape, max_height):
+    artists = [ a for s in shapes for a in s.make_artists(color='black') ]
+
+    height_map = np.zeros((img_shape[0], img_shape[1]), dtype=float)
+    for artist in artists:
+        img = render_artists([artist], img_shape)
+
+        img = img[:,:,0] == 0
+
+        img = scipy.ndimage.distance_transform_edt(img)
+        
+        img_max = img.max()
+        inz = img > 0
+        img[inz] = (1.0 - img[inz]/img_max)
+        img = np.power(img, 1.5) * np.random.normal(loc=1.0, scale=0.2)
+        
+        height_map[inz] = img[inz]
+    
+    return height_map
+
+
 
 def emboss(img, dir='above', k=2):
     xx,yy = np.meshgrid(np.arange(-k,k+1), np.arange(-k,k+1))
@@ -230,16 +274,30 @@ def stroke_image(img, stroke_width, stroke_length=None, curved=False, gscale=1.0
     out_stroke_width = stroke_width * scale_factor
 
     stroke_positions = place_strokes(img.shape, stroke_width)
+    stroke_widths = np.random.normal(loc=stroke_width, scale=.15 * stroke_width, size=stroke_positions.shape[0]).astype(int)
         
     all_shapes = []
-    for p in stroke_positions:
-        color = choose_stroke_color(img, p, stroke_width)
-        ox, oy = image_orientation(gx, gy, p, stroke_width)        
-        shapes = make_stroke(p, stroke_width, color, ox*gscale, oy*gscale)
+    for i in range(len(stroke_positions)):
+        p = stroke_positions[i]
+        w = stroke_widths[i]
+
+        color = choose_stroke_color(img, p, w) / 255.0
+        ox, oy = image_orientation(gx, gy, p, w)  
+        shapes = make_stroke(p, w, color, ox*gscale, oy*gscale)
 
         all_shapes += shapes
 
-    height_im = stroke_height(all_shapes, img.shape, stroke_width*0.5)
+    edges = detect_edges(img)
+    for p0, p1 in edges:
+        p = (0.5 * (np.array(p0) + np.array(p1))).astype(int)
+        p = np.array([p[1], p[0]])
+        w = int(np.random.normal(loc=stroke_width, scale=0.15*stroke_width))
+        color = choose_stroke_color(img, p, w)
+        all_shapes.append(Line(p0=p0, p1=p1, 
+                               color=color / 255.0, 
+                               width=w))
+
+    height_im = stroke_height_full(all_shapes, img.shape, stroke_width*0.5)
     
     r = np.abs(np.random.normal(scale=0.3, size=height_im.shape))
     height_im = emboss(height_im*30 + r)   
@@ -269,12 +327,8 @@ if __name__ == "__main__":
     mask = (xx-0.5)**2 + (yy-0.5)**2 < 0.05
     img[mask,2] = 255
 
-    
-
     img = imageio.imread("octopus.png")[::3,::3,:3].astype(int)
-    
 
-    print(img.shape)
     simg = stroke_image(img, 10, gscale=0.05 , out_width=500)
 
 
