@@ -20,7 +20,7 @@ class Shape:
     color: Tuple[float, float, float]
 
     def _defcol(self, color):
-        return self.color if color is None else color
+        return self.color if color is None else color    
 
 @dataclass
 class Circle(Shape):
@@ -37,12 +37,21 @@ class Circle(Shape):
             mpatches.Circle(xy=self.pos, radius=0.5, color=self._defcol(color), antialiased=False)
         ]
 
+    def scaled(self, s):
+        return Circle(pos=(np.array(self.pos)*s).astype(int), radius=self.radius*s, color=self.color)
+
+
 @dataclass
 class Line(Shape):
     p0: Tuple[float, float] = (0.0, 0.0)
     p1: Tuple[float, float] = (0.0, 0.0)
     width: float = 0.0
     v_tan: Tuple[float, float] = (0.0, 0.0)
+
+    def scaled(self, s):
+        return Line(p0=(np.array(self.p0)*s).astype(int),
+                    p1=(np.array(self.p1)*s).astype(int),
+                    width=self.width*s, v_tan=self.v_tan, color=self.color)
 
     def __post_init__(self):
         dp = np.array(self.p1) - np.array(self.p0)
@@ -85,6 +94,13 @@ class GradientLine(Line):
     pos: Tuple[float, float] = (0.0, 0.0)
     gradient: Tuple[float, float] = (0.0, 0.0)
     
+    def scaled(self, s):
+        return GradientLine(pos=(np.array(self.pos)*s).astype(int),
+                            gradient=self.gradient,
+                            p0=(np.array(self.p0)*s).astype(int),
+                            p1=(np.array(self.p1)*s).astype(int),  
+                            width=self.width*s, v_tan=self.v_tan, color=self.color)
+
     def __post_init__(self):
         length = np.linalg.norm(self.gradient)
         self.v_tan = np.array(self.gradient) / length
@@ -200,11 +216,9 @@ def stroke_height_simple(shapes, img_shape, max_height):
     return np.power(dist, 1.5)
 
 def stroke_height_full(shapes, img_shape, max_height):
-    artists = [ a for s in shapes for a in s.make_artists(color='black') ]
-
     height_map = np.zeros((img_shape[0], img_shape[1]), dtype=float)
-    for artist in artists:
-        img = render_artists([artist], img_shape)
+    for shape in shapes:
+        img = render_artists(shape.make_artists(color='black'), img_shape)
 
         img = img[:,:,0] == 0
 
@@ -257,25 +271,19 @@ def render_artists(artists, shape):
 
 def stroke_image(img, stroke_width, stroke_length=None, curved=False, gscale=1.0, out_width=None):
     if out_width is None:
-        out_width = img.shape[1]
-        
-    fig, (ax1,ax2,ax3) = plt.subplots(1, 3)
-    ax1.imshow(img)
-    ax2.axis('square')
-    ax2.set_xlim((0,img.shape[1]))
-    ax2.set_ylim((0,img.shape[0]))
-    ax2.invert_yaxis()
-    ax3.invert_yaxis()
-
-    gx, gy, gz = np.gradient(img)    
+        out_width = img.shape[1]            
     
     scale_factor = float(out_width) / img.shape[1]
     out_shape = ( int(scale_factor*img.shape[0]), int(scale_factor*img.shape[1]) )    
     out_stroke_width = stroke_width * scale_factor
 
+    # place the strokes in image coordinates
     stroke_positions = place_strokes(img.shape, stroke_width)
     stroke_widths = np.random.normal(loc=stroke_width, scale=.15 * stroke_width, size=stroke_positions.shape[0]).astype(int)
-        
+    
+    gx, gy, gz = np.gradient(img)    
+
+    # build simple strokes        
     all_shapes = []
     for i in range(len(stroke_positions)):
         p = stroke_positions[i]
@@ -287,6 +295,7 @@ def stroke_image(img, stroke_width, stroke_length=None, curved=False, gscale=1.0
 
         all_shapes += shapes
 
+    # build additional edge strokes
     edges = detect_edges(img)
     for p0, p1 in edges:
         p = (0.5 * (np.array(p0) + np.array(p1))).astype(int)
@@ -297,21 +306,22 @@ def stroke_image(img, stroke_width, stroke_length=None, curved=False, gscale=1.0
                                color=color / 255.0, 
                                width=w))
 
-    height_im = stroke_height_full(all_shapes, img.shape, stroke_width*0.5)
+    # build the embossed height map
+    scaled_shapes = [ s.scaled(scale_factor) for s in all_shapes ]    
+    height_im = stroke_height_full(scaled_shapes, out_shape, stroke_width*0.5*scale_factor)
     
     r = np.abs(np.random.normal(scale=0.3, size=height_im.shape))
     height_im = emboss(height_im*30 + r)   
-    ax2.imshow(height_im, cmap='gray')
     
-    all_artists = [ a for s in all_shapes for a in s.make_artists() ]
-    line_im = render_artists(all_artists, img.shape)[:,:,:3]
+    all_artists = [ a for s in scaled_shapes for a in s.make_artists() ]
+    line_im = render_artists(all_artists, out_shape)[:,:,:3]
     composite = np.clip(line_im.astype(float) + np.dstack([height_im, height_im, height_im]), 0, 255).astype(np.uint8)
-    ax3.imshow(composite)#, alpha=0.9)
-    plt.show()
-    return fig
+
+    return composite
 
 if __name__ == "__main__":
-    DPI = 0.5
+    #DPI = 0.5
+    DPI = 1.0
     shape = (128,128)
     img = (np.random.random((shape[0],shape[1],3))*2).astype(int)*255
     img.fill(0)
@@ -327,8 +337,10 @@ if __name__ == "__main__":
     mask = (xx-0.5)**2 + (yy-0.5)**2 < 0.05
     img[mask,2] = 255
 
-    img = imageio.imread("octopus.png")[::3,::3,:3].astype(int)
+    img = imageio.imread("octopus5.png")[:,:,:3].astype(int)
 
-    simg = stroke_image(img, 10, gscale=0.05 , out_width=500)
+    simg = stroke_image(img, 6, gscale=0.05 , out_width=2000)
+
+    imageio.imwrite('test.png', simg)
 
 
