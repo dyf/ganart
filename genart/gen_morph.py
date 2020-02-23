@@ -4,13 +4,16 @@ from scipy.interpolate import CubicSpline
 
 from allensdk.core.cell_types_cache import CellTypesCache
 
-def resample_branch(branch, factor=1):
+def resample_branch(branch, segment_length=1.0):
     p = np.array([ [ c['x'], c['y'], c['z'] ] for c in branch ])
+
     branch_len, t = branch_length(p)
+
+    N = int(np.round(branch_len / segment_length))
 
     spline = CubicSpline(t/branch_len, p)
     
-    even_t = np.linspace(0, 1, int(len(branch)*factor))
+    even_t = np.linspace(0, 1, N)
     even_p = spline(even_t)
     
     return even_p
@@ -52,16 +55,16 @@ def branch_iter(recon, shuffle_children=True):
             yield branch[::-1]
 
     
-def recon_to_commands(recon, max_cmds, resample_factor=2):
+def recon_to_commands(recon, max_cmds, segment_length=2.0):
     commands = np.zeros([max_cmds, 6])
     p_prev = None
     cmd_i = 0
 
-    total = 0
     for branch in branch_iter(recon):
-        p = resample_branch(branch, factor=resample_factor)
-        total += p.shape[0]
+        p = resample_branch(branch, segment_length=segment_length)
 
+        print(p.shape)
+        
         # add point from previous branch
         if p_prev is None:
             p_prev = p[0]
