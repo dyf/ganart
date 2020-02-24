@@ -1,7 +1,9 @@
 import random
 import numpy as np
-from scipy.interpolate import CubicSpline
+import h5py
 
+from scipy.interpolate import CubicSpline
+from scipy.spatial.transform import Rotation
 from allensdk.core.cell_types_cache import CellTypesCache
 
 def resample_branch(branch, segment_length=1.0):
@@ -52,19 +54,27 @@ def branch_iter(recon, shuffle_children=True):
                     break
                 parent = recon.node(parent['parent'])
                 
-            yield branch[::-1]
+            yield branch[::-1], c['type']
 
     
 def recon_to_commands(recon, max_cmds, segment_length=2.0):
-    commands = np.zeros([max_cmds, 6])
+    commands = np.zeros([max_cmds+1, 8])
     p_prev = None
     cmd_i = 0
 
-    for branch in branch_iter(recon):
+    ctype_index = {
+        3: 7,
+        4: 7
+    }
+    
+
+    for branch, ctype in branch_iter(recon):
+        # skip axons
+        if ctype == 2:
+            continue
+        
         p = resample_branch(branch, segment_length=segment_length)
 
-        print(p.shape)
-        
         # add point from previous branch
         if p_prev is None:
             p_prev = p[0]
@@ -74,31 +84,99 @@ def recon_to_commands(recon, max_cmds, segment_length=2.0):
         diff = np.diff(p, axis=0)
 
         commands[cmd_i:cmd_i+diff.shape[0], :3] = diff
-        commands[cmd_i,3:] = [ 1, 0, 0 ]
-        commands[cmd_i+1:cmd_i+diff.shape[0], 3:] = [ 0, 1, 0 ]
+        commands[cmd_i,3:6] = [ 1, 0, 0 ]
+        commands[cmd_i+1:cmd_i+diff.shape[0], 3:6] = [ 0, 1, 0 ]
+
+        cidx = ctype_index[ctype]
+        commands[cmd_i+1:cmd_i+diff.shape[0], cidx] = 1
 
         p_prev = p[-1]
         cmd_i += diff.shape[0]
 
-    commands[cmd_i:] = [ 0, 0, 0, 0, 0, 1 ]
+    commands[cmd_i:] = [ 0, 0, 0, 0, 0, 1, 0, 0 ]
 
-    return commands
+    # first command is a no-op
+    return commands[1:]
     
     
-def commands_to_recon(commands):
-    pass
+def gen_metadata(cells):
+    keys = [ 'species', 'structure_layer_name', 'structure_area_abbrev', 'dendrite_type', 'structure_hemisphere' ]
+    values = [ sorted(list(set([ c[key] for c in cells ]))) for key in keys ]
+    lens = [ len(v) for v in values ]
+    starts = np.cumsum([0] + lens[:-1])
 
+    for c in cells:
+        vec = np.zeros(np.sum(lens))
+
+        for ki, k in enumerate(keys):
+            v = c[k]
+            idx = values[ki].index(v)
+            vec[starts[ki]+idx] = 1
+
+            print(ki, k, v, values[ki], idx, starts[ki])
+
+        print(vec)
+        break
+
+def transform_recon(recon, rotate=True, noise_scale=0.1):
+    
+    # move soma to origin
+    o = recon.soma
+    tm = np.array([[1,0,0,-o['x']],
+                   [0,1,0,-o['y']],
+                   [0,0,1,-o['z']],
+                   [0,0,0,1]])
+
+    # rotate randomly
+    rm = np.eye(4)
+    
+    if rotate:
+        angle = np.random.random() * 2 * np.pi
+        axis = np.random.random(3)
+        axis /= np.linalg.norm(axis)
+    
+        r = Rotation.from_rotvec(angle * axis)
+
+        rm[:3,:3] = r.as_matrix()
+
+    xfm = np.dot(rm, tm)
+
+    for c in recon.compartment_list:
+        p = np.array([c['x'], c['y'], c['z'], 1])
+        pn = np.dot(xfm, p)
+
+        if noise_scale:
+            pn[:3] += np.random.random(3)*noise_scale - noise_scale*0.5
+
+        c['x'] = pn[0]
+        c['y'] = pn[1]
+        c['z'] = pn[2]
+        
+    
 def main():
+    n_copies = 10
+    
     ctc = CellTypesCache(manifest_file='./ctc/manifest.json')
 
     cells = ctc.get_cells(require_reconstruction=True)
-    
-    for c in cells:
-        r = ctc.get_reconstruction(c['id'])
-        print(len(r.compartment_list))
-        cmds = recon_to_commands(r, 4000)
-        print(cmds)
-        break
+
+    #gen_metadata(cells)
+
+    max_cmds = 10000
+    all_cmds = np.zeros((len(cells)*n_copies, max_cmds, 8))
+
+    i = 0
+    for ci,c in enumerate(cells):
+        for _ in range(n_copies):
+            print(ci, i)
+            r = ctc.get_reconstruction(c['id'])
+            transform_recon(r, rotate=True, noise_scale=0.1)
+
+            all_cmds[i] = recon_to_commands(r, max_cmds, segment_length=2.5)
+            i += 1
+
+    with h5py.File("morphologies.h5","w") as f:
+        ds = f.create_dataset("data", data=all_cmds)
         
 
 if __name__ == "__main__": main()
