@@ -6,3 +6,4 @@
 *.pyc
 *.weights
 *ckpt*
+*mp4

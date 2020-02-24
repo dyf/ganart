@@ -217,7 +217,9 @@ def stroke_height_simple(shapes, img_shape, max_height):
 
 def stroke_height_full(shapes, img_shape, max_height):
     height_map = np.zeros((img_shape[0], img_shape[1]), dtype=float)
-    for shape in shapes:
+    for i,shape in enumerate(shapes):
+        if i % 10 == 0:
+            print(f"{i+1}/{len(shapes)}")
         img = render_artists(shape.make_artists(color='black'), img_shape)
 
         img = img[:,:,0] == 0
@@ -285,7 +287,8 @@ def stroke_image(img, stroke_width, stroke_length=None, curved=False, gscale=1.0
 
     # build simple strokes        
     all_shapes = []
-    for i in range(len(stroke_positions)):
+    N = len(stroke_positions)
+    for i in range(N):
         p = stroke_positions[i]
         w = stroke_widths[i]
 
@@ -337,8 +340,8 @@ if __name__ == "__main__":
     mask = (xx-0.5)**2 + (yy-0.5)**2 < 0.05
     img[mask,2] = 255
 
-    img = imageio.imread("octopus5.png")[:,:,:3].astype(int)
-
+    img = imageio.imread("octopus.jpg")[::2,::2,:3].astype(int)
+    
     simg = stroke_image(img, 6, gscale=0.05 , out_width=2000)
 
     imageio.imwrite('test.png', simg)

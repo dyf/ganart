@@ -31,8 +31,15 @@ class Circle(Shape):
     def render(self, img_size):
         radius = int(self.size * 0.5 * min(img_size[0], img_size[1]))
         r = int(self.y*img_size[0])
-        c = int(self.x*img_size[1])
+        c = int(self.x*img_size[1])        
         return skd.circle(r, c, radius, shape=img_size[:2])
+
+class CircleOutline(Shape): 
+    def render(self, img_size):
+        radius = int(self.size * 0.5 * min(img_size[0], img_size[1]))
+        r = int(self.y*img_size[0])
+        c = int(self.x*img_size[1])        
+        return skd.circle_perimeter(r, c, radius, shape=img_size[:2])
 
 class Square(RotatableShape):
     def render(self, img_size):
@@ -109,16 +116,17 @@ class Triangle(RotatableShape):
 
 SHAPE_CHOICES = [ Circle, Triangle, Rectangle, Ellipse, Square ]
 
-def render_shapes(shapes, img_size):    
+def render_shapes(shapes, img_size, bg=None):
     img = np.zeros(img_size, dtype=np.float32)
     
-    bg = np.random.random(3)
+    if bg is None:
+        bg = np.random.random(3)
     
     img[:,:,0] = bg[0]
     img[:,:,1] = bg[1]
     img[:,:,2] = bg[2]
-
-    for shape in shapes:
+    
+    for shape in shapes:                
         rr,cc = shape.render(img_size)        
         rr,cc = crop_rc(rr, cc, img_size)
 

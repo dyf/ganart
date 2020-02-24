@@ -18,10 +18,10 @@ class IndexedImageLoader:
 
         self.idxs = []
         for im in self.image_files:
-            toks = re.split('[.-]+', str(im))
-            self.idxs.append(int(toks[-2]))
+            toks = re.split('[.\\\\-]+', str(im))
+            self.idxs.append(int(toks[-3]))
 
-        self.idxs = sorted(self.idxs)
+        self.idxs = sorted(self.idxs)        
 
     def __len__(self):
         return len(self.idxs)
@@ -35,15 +35,15 @@ class IndexedImageLoader:
             if i is None:
                 raise KeyError("not sure what I'm doing")
 
-            idx = self.idxs[i]
+            idx = self.idxs[i]        
 
-        f = tf.io.read_file(str(self.format).format(index=idx))
+        f = tf.io.read_file(str(self.format).format(index="{0:05d}".format(idx)))
         
         image = (tf.cast(tf.image.decode_jpeg(f), tf.float32) / 127.5) - 1.0
         
         if square:
             image = self.square_image(image)
-
+        
         if self.expected_shape:
             if image.shape[0] != self.expected_shape[0] or image.shape[1] != self.expected_shape[1]:
                 raise ValueError("bad shape")
@@ -66,7 +66,7 @@ class IndexedImageLoader:
         im = self.load_image(i=i, square=True)
 
         start = np.array([ np.random.randint(0, im.shape[0] - shape[0]), 
-                           np.random.randint(0, im.shape[1] - shape[1]) ])        
+                           np.random.randint(0, im.shape[1] - shape[1]) ])
 
         return im[start[0]:start[0]+shape[0],
                   start[1]:start[1]+shape[1],:]
@@ -78,10 +78,9 @@ class IndexedImageLoader:
 
             imgs = []
             for ii in range(start_i, end_i):
-                try:
-                    imgs.append(self.load_patch(ii, shape))
-                except ValueError as e:                    
-                    pass
+                img = self.load_patch(ii, shape)                                
+                imgs.append(img)
+                
             yield tf.stack(imgs)
 
 class PairedImageLoader:
