@@ -9,9 +9,9 @@ from allensdk.core.cell_types_cache import CellTypesCache
 def resample_branch(branch, segment_length=1.0):
     p = np.array([ [ c['x'], c['y'], c['z'] ] for c in branch ])
 
-    branch_len, t = branch_length(p)
+    branch_len, t = branch_length(p)    
 
-    N = int(np.round(branch_len / segment_length))
+    N = max(2, int(np.round(branch_len / segment_length)))
 
     spline = CubicSpline(t/branch_len, p)
     
@@ -118,7 +118,9 @@ def gen_metadata(cells):
         print(vec)
         break
 
-def transform_recon(recon, rotate=True, noise_scale=0.1):
+def transform_recon(recon, rotate=True, scale=0.001, noise_scale=0.1):
+    p = np.array([ [c['x'], c['y'], c['z']] for c in recon.compartment_list])
+    size = np.max(p,axis=0) - np.min(p,axis=0)    
     
     # move soma to origin
     o = recon.soma
@@ -139,7 +141,13 @@ def transform_recon(recon, rotate=True, noise_scale=0.1):
 
         rm[:3,:3] = r.as_matrix()
 
-    xfm = np.dot(rm, tm)
+    # shrink
+    sc = np.array([[ scale, 0, 0, 0],
+                   [ 0, scale, 0, 0],
+                   [ 0, 0, scale, 0],
+                   [ 0, 0, 0,     1]])
+
+    xfm = np.dot(sc, np.dot(rm, tm))
 
     for c in recon.compartment_list:
         p = np.array([c['x'], c['y'], c['z'], 1])
@@ -162,7 +170,7 @@ def main():
 
     #gen_metadata(cells)
 
-    max_cmds = 10000
+    max_cmds = 1000
     all_cmds = np.zeros((len(cells)*n_copies, max_cmds, 8))
 
     i = 0
@@ -170,9 +178,9 @@ def main():
         for _ in range(n_copies):
             print(ci, i)
             r = ctc.get_reconstruction(c['id'])
-            transform_recon(r, rotate=True, noise_scale=0.1)
+            transform_recon(r, rotate=True, scale=0.001, noise_scale=0.00001)
 
-            all_cmds[i] = recon_to_commands(r, max_cmds, segment_length=2.5)
+            all_cmds[i] = recon_to_commands(r, max_cmds, segment_length=0.025)
             i += 1
 
     with h5py.File("morphologies.h5","w") as f:
