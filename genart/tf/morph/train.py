@@ -18,7 +18,7 @@ checkpoint_callback = ModelCheckpoint(output_path)
 
 m = MorphModel(d.shape[1:])
 m.summary()
-m.compile(optimizer=Adam(lr=0.0001), loss='mse', metrics=['accuracy'])
+m.compile(optimizer=Adam(lr=0.0001, clipnorm=1.0), loss='mse', metrics=['accuracy'])
 m.fit(X_train, X_train, batch_size=1, epochs=100, 
       #validation_data=(X_test, X_test), 
       callbacks=[checkpoint_callback])
