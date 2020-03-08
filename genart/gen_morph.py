@@ -6,18 +6,31 @@ from scipy.interpolate import CubicSpline
 from scipy.spatial.transform import Rotation
 from allensdk.core.cell_types_cache import CellTypesCache
 
+def toy_morph():
+    from allensdk.core.swc import Morphology, Compartment
+
+    compartments = [ Compartment(id=0, x=1, y=1, z=1, radius=1, type=1, parent=-1),
+                     Compartment(id=1, x=2, y=1, z=1, radius=1, type=3, parent=0),
+                     Compartment(id=2, x=3, y=1, z=1, radius=1, type=3, parent=1),
+                     Compartment(id=3, x=4, y=1, z=1, radius=1, type=3, parent=2),
+                     Compartment(id=4, x=4, y=2, z=1, radius=1, type=4, parent=3),
+                     Compartment(id=5, x=4, y=0, z=1, radius=1, type=4, parent=3),
+                     Compartment(id=6, x=1, y=1, z=20, radius=1, type=3, parent=0) ]
+
+    return Morphology(compartment_list=compartments)
+
 def resample_branch(branch, segment_length=1.0):
     p = np.array([ [ c['x'], c['y'], c['z'] ] for c in branch ])
-
+    
     branch_len, t = branch_length(p)    
 
-    N = max(2, int(np.round(branch_len / segment_length)))
+    N = max(2, int(np.round(branch_len / segment_length) + 1))
 
     spline = CubicSpline(t/branch_len, p)
     
     even_t = np.linspace(0, 1, N)
     even_p = spline(even_t)
-    
+
     return even_p
                     
 def branch_length(p):
@@ -42,13 +55,13 @@ def recon_iter(recon, shuffle_children=True):
     
 def branch_iter(recon, shuffle_children=True):
     for c in recon_iter(recon, shuffle_children):
-
+        
         # when we hit a branch point, backtrace to previous branch point
         if len(c['children']) != 1 and c != recon.soma:
             branch = [c]
             parent = recon.node(c['parent'])
 
-            while True:
+            while parent:
                 branch.append(parent)
                 if len(parent['children']) > 1:
                     break
@@ -56,15 +69,27 @@ def branch_iter(recon, shuffle_children=True):
                 
             yield branch[::-1], c['type']
 
+def commands_to_recon(cmds):
+    from allensdk.core.swc import Morphology, Compartment
     
+    compartments = [ dict(id=0, x=0, y=0, z=0, type=1, radius=1, parent=-1) ]
+    
+    for cmd in cmds:
+        print(cmd)
+
+    return Morphology(compartment_list=[Compartment(c) for c in compartments])
+
 def recon_to_commands(recon, max_cmds, segment_length=2.0):
-    commands = np.zeros([max_cmds+1, 8])
+    commands = np.zeros([max_cmds+1, 9])
+
+    commands[:,:] = [ 0, 0, 0, 0, 0, 1, 0, 0, 1 ]
+    
     p_prev = None
     cmd_i = 0
 
     ctype_index = {
-        3: 7,
-        4: 7
+        3: [1, 0, 0],
+        4: [0, 1, 0]
     }
     
 
@@ -87,13 +112,13 @@ def recon_to_commands(recon, max_cmds, segment_length=2.0):
         commands[cmd_i,3:6] = [ 1, 0, 0 ]
         commands[cmd_i+1:cmd_i+diff.shape[0], 3:6] = [ 0, 1, 0 ]
 
-        cidx = ctype_index[ctype]
-        commands[cmd_i+1:cmd_i+diff.shape[0], cidx] = 1
+        ctype_oh = ctype_index[ctype]
+        commands[cmd_i:cmd_i+diff.shape[0], 6:9] = ctype_oh
 
         p_prev = p[-1]
         cmd_i += diff.shape[0]
 
-    commands[cmd_i:] = [ 0, 0, 0, 0, 0, 1, 0, 0 ]
+
 
     # first command is a no-op
     return commands[1:]
@@ -162,6 +187,17 @@ def transform_recon(recon, rotate=True, scale=0.001, noise_scale=0.1):
         
     
 def main():
+    morph = toy_morph()
+    cmds = recon_to_commands(morph, max_cmds=20, segment_length=2)
+    nmorph = commands_to_recon(cmds)
+    print(nmorph)
+    #transform_recon(morph, rotate=True, scale=0.001, noise_scale=0.00001)
+    #print(morph.compartment_list)
+
+    return
+    
+
+    
     n_copies = 10
     
     ctc = CellTypesCache(manifest_file='./ctc/manifest.json')
