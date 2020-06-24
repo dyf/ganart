@@ -95,11 +95,11 @@ def load_variant_lookup(path=DEFAULT_VARIANT_LOOKUP_FILE):
 def load(index_path=DEFAULT_INDEX):
     return pd.read_csv(index_path)
 
-def iterdata(index_path=DEFAULT_INDEX, batch_size=10, shuffle=True):    
+def iterdata(index_path=DEFAULT_INDEX, batch_size=10, shuffle=True, random_seed=None):    
     df = load(index_path=index_path)
     
     if shuffle:
-        df = df.sample(frac=1)
+        df = df.sample(frac=1, random_state=random_seed)
 
     for i in range(0, len(df), batch_size):
         rows = df[i:i+batch_size]

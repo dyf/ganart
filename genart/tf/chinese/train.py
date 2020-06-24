@@ -1,5 +1,6 @@
 import os, time
 import matplotlib.pyplot as plt
+import numpy as np
 
 import tensorflow as tf
 import genart.tf.chinese.data as data
@@ -34,7 +35,7 @@ def train_step(images, batch_size, latent_size):
     gradients_of_discriminator = disc_tape.gradient(disc_loss, discriminator.trainable_variables)
 
     generator_optimizer.apply_gradients(zip(gradients_of_generator, generator.trainable_variables))
-    discriminator_optimizer.apply_gradients(zip(gradients_of_discriminator, discriminator.trainable_variables))
+    discriminator_optimizer.apply_gradients(zip(gradients_of_discriminator, discriminator.trainable_variables))   
 
     return gen_loss, disc_loss
 
@@ -50,7 +51,7 @@ def generate_and_save_images(model, batch, epoch, test_input):
         plt.imshow(predictions[i, :, :, 0] * 127.5 + 127.5, cmap='gray')
         plt.axis('off')
 
-    fname = os.path.join(checkpoint_dir, f'image_batch_{batch//1000:03d}_epoch_{epoch:02d}.png')
+    fname = os.path.join(checkpoint_dir, f'image_epoch_{epoch:03d}.png')
     plt.savefig(fname)
     plt.close()
 
@@ -92,11 +93,12 @@ if __name__ == "__main__":
     num_examples_to_generate = 16
     latent_size = 100
     batch_size = 20
-    num_epochs = 500
-    start_epoch = 103
+    num_epochs = 1000
+    start_epoch = 0
+    
     random_seed = 12345
-
     tf.random.set_seed(random_seed)
+    np.random.seed(random_seed)
 
     # We will reuse this seed overtime (so it's easier)
     # to visualize progress in the animated GIF)
@@ -105,7 +107,7 @@ if __name__ == "__main__":
     generator, discriminator = model.build_gan(latent_size=latent_size)    
 
     generator_optimizer = tf.keras.optimizers.Adam(1e-5)
-    discriminator_optimizer = tf.keras.optimizers.Adam(1e-4)
+    discriminator_optimizer = tf.keras.optimizers.Adam(4e-5)
 
     checkpoint_dir = './chinese_output/'
     checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
@@ -122,4 +124,4 @@ if __name__ == "__main__":
     else:
         print("Initializing from scratch.")
 
-    train(lambda: data.iterdata(batch_size=batch_size), epochs=num_epochs, latent_size=latent_size)
+    train(lambda: data.iterdata(batch_size=batch_size, random_seed=random_seed), epochs=num_epochs, latent_size=latent_size)
