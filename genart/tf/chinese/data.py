@@ -6,18 +6,18 @@ from PIL import ImageFont, ImageDraw, Image
 import glob
 import unicodedata
 import re
+import enum
 
 FONT_DIR = 'chinese/ttf'
 DEFAULT_INDEX = 'chinese/rendered_chinese_characters.csv'
 DEFAULT_VARIANT_LOOKUP_FILE = 'chinese/Unihan_Variants.txt'
+RENDERED_IMAGE_DIR = 'chinese/rendered'
 
-
-class CharacterClass:
+@enum.unique
+class CharacterClass(enum.Enum):
     FAKE = 0
     TRADITIONAL = 1
     SIMPLIFIED = 2
-    UNKNOWN = 3
-    COUNT = 4
 
 def classify_character_from_filename(fname):
     fname_lower = fname.lower()
@@ -40,20 +40,24 @@ def build_index(df, fonts, out_dir):
             simp_char = row['simplified_char']
 
             trad_file = os.path.normpath(os.path.join(out_dir, font_name, trad_char + '.png'))
-            
+            simp_file = os.path.normpath(os.path.join(out_dir, font_name, simp_char + '.png'))
 
+            is_both = trad_char == simp_char
+            
             if os.path.exists(trad_file):
+
                 files.append({
                     'font': font_name,
+                    #'class': CharacterClass.BOTH if is_both else CharacterClass.TRADITIONAL, 
+                    'class': CharacterClass.TRADITIONAL.value, 
                     'character': trad_char,
                     'file': trad_file
                 })
-
-            simp_file = os.path.normpath(os.path.join(out_dir, font_name, simp_char + '.png'))
-
-            if os.path.exists(simp_file):
+            
+            if (not is_both) and os.path.exists(simp_file):
                 files.append({
                     'font': font_name,
+                    'class': CharacterClass.SIMPLIFIED.value,
                     'character': simp_char,
                     'file': simp_file
                 })
@@ -112,6 +116,16 @@ def iterdata(index_path=DEFAULT_INDEX, batch_size=10, shuffle=True, random_seed=
         s = images.shape
         images = images.reshape([s[0], s[1], s[2], 1])
         yield rows, images
+
+def iterdata_variants(image_index_path=DEFAULT_INDEX, variant_path=DEFAULT_VARIANT_LOOKUP_FILE, batch_size=10, shuffle=True, random_seed=None):
+    images = load(image_index_path)
+    variants = load_variant_lookup(variant_path)
+
+    if shuffle:
+        variants = variants.sample(frac=1)
+
+    for i in range(0, len(variants), batch_size):
+        pass
 
 
 def list_fonts(basedir=FONT_DIR):
@@ -174,10 +188,20 @@ if __name__ == "__main__":
     fonts = list_fonts()
     df = load_variant_lookup()  
 
-    #unique_chars = set(df['traditional_char'].values.tolist()) | set(df['simplified_char'].values.tolist())
+    #trad_chars = set(df['traditional_char'].values.tolist())
+    #simp_chars =  set(df['simplified_char'].values.tolist())
+    #unique_chars =  trad_chars | simp_chars
     #render_characters(unique_chars, fonts, 'chinese/rendered')
 
-    file_index = build_index(df, fonts, 'chinese/rendered')
-    file_index.to_csv(DEFAULT_INDEX, index=False)
+    file_index = build_index(df, fonts, RENDERED_IMAGE_DIR)
+    file_index.to_csv('chinese/test.csv', index=False)
+
+    index = load('chinese/test.csv')
+    print(index)
+    print(len(index[index['class'] == CharacterClass.TRADITIONAL.value]))
+    print(len(index[index['class'] == CharacterClass.SIMPLIFIED.value]))
+    #print(len(index[index['class'] == CharacterClass.BOTH]))
+    #for data in iterdata_variants():
+    #    print(data)
 
     
