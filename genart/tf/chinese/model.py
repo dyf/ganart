@@ -59,7 +59,7 @@ def build_class_gan(latent_size=100, num_fonts=10):
     
     latent_input = Input(shape=(latent_size,))
     ts_input = Input(shape=(3,))
-    font_input = Input(shape=(num_fonts+1,))
+    font_input = Input(shape=(num_fonts,))
 
     layer_1_input = Concatenate()([latent_input, ts_input, font_input])
 

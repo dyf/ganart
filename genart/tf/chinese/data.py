@@ -49,7 +49,8 @@ def build_index(df, fonts, out_dir):
                 files.append({
                     'font': font_name,
                     #'class': CharacterClass.BOTH if is_both else CharacterClass.TRADITIONAL, 
-                    'class': CharacterClass.TRADITIONAL.value, 
+                    'class_name': CharacterClass.TRADITIONAL.name, 
+                    'class_code': CharacterClass.TRADITIONAL.value, 
                     'character': trad_char,
                     'file': trad_file
                 })
@@ -57,12 +58,18 @@ def build_index(df, fonts, out_dir):
             if (not is_both) and os.path.exists(simp_file):
                 files.append({
                     'font': font_name,
-                    'class': CharacterClass.SIMPLIFIED.value,
+                    'class_name': CharacterClass.SIMPLIFIED.name,
+                    'class_code': CharacterClass.SIMPLIFIED.value,
                     'character': simp_char,
                     'file': simp_file
                 })
 
-    return pd.DataFrame.from_records(files).drop_duplicates(ignore_index=True)
+    df = pd.DataFrame.from_records(files).drop_duplicates(ignore_index=True)
+
+    lut = font_lut(df['font'])    
+    df['font_code'] = df['font'].apply(lambda x: lut[x])
+
+    return df
 
 
 def string_code(s):
@@ -76,6 +83,12 @@ def valid_range(val):
     valid_ranges =  [0x4E00, 0x62FF], [0x6300, 0x77FF], [0x7800, 0x8CFF], [0x8D00, 0x9FFF]
 
     return any( (vint >= vr[0]) & (vint <= vr[1]) for vr in valid_ranges )
+
+def font_lut(series):
+    font_names = series.unique()
+    font_names = ["FAKE"] + sorted(font_names)
+
+    return dict(zip(font_names, range(len(font_names))))
 
 def load_variant_lookup(path=DEFAULT_VARIANT_LOOKUP_FILE):
     df = pd.read_csv(path, comment='#', sep='\t', header=None, names=['from_code','type','to_code'])        
@@ -91,9 +104,7 @@ def load_variant_lookup(path=DEFAULT_VARIANT_LOOKUP_FILE):
     df = df[df['type']=='kSimplifiedVariant']
     df['traditional_char'] = df['from_code'].apply(decode_string)
     df['simplified_char'] = df['to_code'].apply(decode_string)
-    
-    
-    
+            
     return df[(df['simplified_char']!="")&(df['traditional_char']!="")]
 
 def load(index_path=DEFAULT_INDEX):
@@ -101,7 +112,7 @@ def load(index_path=DEFAULT_INDEX):
 
 def iterdata(index_path=DEFAULT_INDEX, batch_size=10, shuffle=True, random_seed=None):    
     df = load(index_path=index_path)
-    
+   
     if shuffle:
         df = df.sample(frac=1, random_state=random_seed)
 
@@ -128,7 +139,7 @@ def iterdata_variants(image_index_path=DEFAULT_INDEX, variant_path=DEFAULT_VARIA
         pass
 
 
-def list_fonts(basedir=FONT_DIR):
+def list_available_font_ttfs(basedir=FONT_DIR):
     fonts = glob.glob(basedir + "/*.ttf")
     return [ os.path.normpath(f) for f in fonts]
 
@@ -185,9 +196,8 @@ def render_characters(chars, fonts, out_dir):
         
 
 if __name__ == "__main__":
-    fonts = list_fonts()
+    fonts = list_available_font_ttfs()
     df = load_variant_lookup()  
-
     #trad_chars = set(df['traditional_char'].values.tolist())
     #simp_chars =  set(df['simplified_char'].values.tolist())
     #unique_chars =  trad_chars | simp_chars
@@ -195,6 +205,7 @@ if __name__ == "__main__":
 
     file_index = build_index(df, fonts, RENDERED_IMAGE_DIR)
     file_index.to_csv(DEFAULT_INDEX, index=False)
+    
 
 
     

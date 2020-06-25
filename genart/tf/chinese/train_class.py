@@ -10,35 +10,49 @@ categorical_cross_entropy = tf.keras.losses.CategoricalCrossentropy()
 binary_cross_entropy = tf.keras.losses.BinaryCrossentropy()
 
 def generator_loss(fake_output):
+    fake_class_output = fake_output[0]
     # if the generator is succeeding, the discriminator thinks the images are real.
     # first one-hot position is fake, so let's make sure that's all zeros.
-    return binary_cross_entropy(tf.zeros([fake_output.shape[0]]), fake_output[:,0])
+    return binary_cross_entropy(tf.zeros([fake_class_output.shape[0]]), fake_class_output[:,0])
 
-def discriminator_loss(real_output, real_classes, fake_output):
-    real_loss = categorical_cross_entropy(real_classes, real_output)
+def discriminator_loss(real_output, real_classes, real_fonts, fake_output):
+    real_class_output, real_font_output = real_output    
 
-    fake_cats = tf.ones_like(fake_output) * data.CharacterClass.FAKE.value
-    fake_oh = tf.one_hot(fake_cats, depth=len(data.CharacterClass))
-    fake_loss = categorical_cross_entropy(fake_oh, fake_output)
+    # discriminator wants to correctly identify class and font
+    real_class_loss = categorical_cross_entropy(real_classes, real_class_output)
+    real_font_loss = categorical_cross_entropy(real_fonts, real_font_output)
 
-    total_loss = real_loss + fake_loss
+    fake_class_output, fake_font_output = fake_output
+
+    # discriminator wants to correctly yell fake    
+    fake_class_cats = tf.ones((fake_class_output.shape[0],1), dtype=tf.dtypes.int32) * data.CharacterClass.FAKE.value    
+    fake_class_oh = tf.one_hot(fake_class_cats, depth=len(data.CharacterClass))
+    fake_class_loss = categorical_cross_entropy(fake_class_oh, fake_class_output)
+
+    fake_font_cats = tf.ones((fake_font_output.shape[0],1), dtype=tf.dtypes.int32) * font_lut['FAKE']
+    fake_font_oh = tf.one_hot(fake_font_cats, depth=len(all_fonts))
+    fake_font_loss = categorical_cross_entropy(fake_font_oh, fake_font_output)
+
+    total_loss = real_class_loss + real_font_loss + fake_class_loss + fake_font_loss
 
     return total_loss
 
 @tf.function
-def train_step(images, image_classes, batch_size, latent_size):
+def train_step(images, image_classes, image_fonts, batch_size, latent_size):
     noise = tf.random.normal([batch_size, latent_size])
-    noise_classes_cat = tf.random.uniform([batch_size], minval=1, maxval=len(data.CharacterClass))
+    noise_classes_cat = tf.random.uniform([batch_size], minval=1, maxval=len(data.CharacterClass), dtype=tf.dtypes.int32)
     noise_classes_oh = tf.one_hot(noise_classes_cat, depth=len(data.CharacterClass))
+    noise_fonts_cat = tf.random.uniform([batch_size], minval=1, maxval=len(all_fonts), dtype=tf.dtypes.int32)
+    noise_fonts_oh = tf.one_hot(noise_fonts_cat, depth=len(all_fonts))
 
     with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-        generated_images = generator([noise, noise_classes_oh], training=True)
+        generated_images = generator([noise, noise_classes_oh, noise_fonts_oh], training=True)
 
         real_output = discriminator(images, training=True)
         fake_output = discriminator(generated_images, training=True)
 
         gen_loss = generator_loss(fake_output)
-        disc_loss = discriminator_loss(real_output, fake_output)
+        disc_loss = discriminator_loss(real_output, image_classes, image_fonts, fake_output)
 
     gradients_of_generator = gen_tape.gradient(gen_loss, generator.trainable_variables)
     gradients_of_discriminator = disc_tape.gradient(disc_loss, discriminator.trainable_variables)
@@ -70,16 +84,17 @@ def train(dataset, epochs, latent_size):
 
         bi = 0
         for metadata_batch, image_batch in dataset():                        
-            iamge_classes = tf.one_hot(metadata_batch['class'])
+            image_classes = tf.one_hot(metadata_batch['class_code'], depth=len(data.CharacterClass))
+            image_fonts = tf.one_hot(metadata_batch['font_code'], depth=len(all_fonts))
 
-            gl, dl = train_step(image_batch, image_classes, image_batch.shape[0], latent_size)
+            gl, dl = train_step(image_batch, image_classes, image_fonts, image_batch.shape[0], latent_size)
 
             if bi % 4000 == 0:
                 print(f'epoch({epoch}) batch({bi//1000}) genloss({gl}) discloss({dl})')
                 generate_and_save_images(generator,
                                          bi + 1,
                                          epoch + 1,
-                                         [seed, seed_classes])
+                                         [seed, seed_classes, seed_fonts])
 
             bi+=1
 
@@ -94,7 +109,7 @@ def train(dataset, epochs, latent_size):
     generate_and_save_images(generator,
                              0,
                              epochs,
-                             [seed, seed_classes])
+                             [seed, seed_classes, seed_fonts])
 
 
 if __name__ == "__main__":
@@ -102,16 +117,23 @@ if __name__ == "__main__":
     latent_size = 100
     batch_size = 20
     num_epochs = 10
-
-    # We will reuse this seed overtime (so it's easier)
+    
+    df = data.load()       
+    font_lut =  data.font_lut(df['font'])
+    all_fonts = font_lut.values()
+    
+    # We will reuse this seed overtime (so it's easier)    
     # to visualize progress in the animated GIF)
     seed = tf.random.normal([num_examples_to_generate, latent_size])
-    seed_classes = tf.random.uniform([num_examples_to_generate], minval=1, maxval=len(data.CharacterClass))
+    seed_classes = tf.random.uniform([num_examples_to_generate], minval=1, maxval=len(data.CharacterClass), dtype=tf.dtypes.int32)
+    seed_classes = tf.one_hot(seed_classes, depth=len(data.CharacterClass))
+    seed_fonts = tf.random.uniform([num_examples_to_generate], minval=1, maxval=len(all_fonts), dtype=tf.dtypes.int32)
+    seed_fonts = tf.one_hot(seed_fonts, depth=len(all_fonts))
 
-    generator, discriminator = model.build_gan(latent_size=latent_size)
+    generator, discriminator = model.build_class_gan(latent_size=latent_size, num_fonts=len(all_fonts))
 
     generator_optimizer = tf.keras.optimizers.Adam(1e-5)
-    discriminator_optimizer = tf.keras.optimizers.Adam(1e-5)
+    discriminator_optimizer = tf.keras.optimizers.Adam(4e-5)
 
     checkpoint_dir = './data/chinese_class_output/'
     checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
