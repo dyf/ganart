@@ -93,8 +93,8 @@ if __name__ == "__main__":
     num_examples_to_generate = 16
     latent_size = 100
     batch_size = 20
-    num_epochs = 1000
-    start_epoch = 0
+    num_epochs = 21
+    start_epoch = 1079
     
     random_seed = 12345
     tf.random.set_seed(random_seed)
@@ -109,7 +109,7 @@ if __name__ == "__main__":
     generator_optimizer = tf.keras.optimizers.Adam(1e-5)
     discriminator_optimizer = tf.keras.optimizers.Adam(4e-5)
 
-    checkpoint_dir = './chinese_output/'
+    checkpoint_dir = './data/chinese_output/'
     checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
     checkpoint = tf.train.Checkpoint(generator_optimizer=generator_optimizer,
                                     discriminator_optimizer=discriminator_optimizer,

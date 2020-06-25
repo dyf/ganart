@@ -8,10 +8,10 @@ import unicodedata
 import re
 import enum
 
-FONT_DIR = 'chinese/ttf'
-DEFAULT_INDEX = 'chinese/rendered_chinese_characters.csv'
-DEFAULT_VARIANT_LOOKUP_FILE = 'chinese/Unihan_Variants.txt'
-RENDERED_IMAGE_DIR = 'chinese/rendered'
+FONT_DIR = 'data/chinese/ttf'
+DEFAULT_INDEX = 'data/chinese/rendered_chinese_characters.csv'
+DEFAULT_VARIANT_LOOKUP_FILE = 'data/chinese/Unihan_Variants.txt'
+RENDERED_IMAGE_DIR = 'data/chinese/rendered'
 
 @enum.unique
 class CharacterClass(enum.Enum):
@@ -194,14 +194,7 @@ if __name__ == "__main__":
     #render_characters(unique_chars, fonts, 'chinese/rendered')
 
     file_index = build_index(df, fonts, RENDERED_IMAGE_DIR)
-    file_index.to_csv('chinese/test.csv', index=False)
+    file_index.to_csv(DEFAULT_INDEX, index=False)
 
-    index = load('chinese/test.csv')
-    print(index)
-    print(len(index[index['class'] == CharacterClass.TRADITIONAL.value]))
-    print(len(index[index['class'] == CharacterClass.SIMPLIFIED.value]))
-    #print(len(index[index['class'] == CharacterClass.BOTH]))
-    #for data in iterdata_variants():
-    #    print(data)
 
     

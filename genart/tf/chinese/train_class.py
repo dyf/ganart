@@ -17,8 +17,8 @@ def generator_loss(fake_output):
 def discriminator_loss(real_output, real_classes, fake_output):
     real_loss = categorical_cross_entropy(real_classes, real_output)
 
-    fake_cats = tf.ones_like(fake_output) * data.CharacterClass.FAKE
-    fake_oh = tf.one_hot(fake_cats, depth=data.CharacterClass.COUNT)
+    fake_cats = tf.ones_like(fake_output) * data.CharacterClass.FAKE.value
+    fake_oh = tf.one_hot(fake_cats, depth=len(data.CharacterClass))
     fake_loss = categorical_cross_entropy(fake_oh, fake_output)
 
     total_loss = real_loss + fake_loss
@@ -28,8 +28,8 @@ def discriminator_loss(real_output, real_classes, fake_output):
 @tf.function
 def train_step(images, image_classes, batch_size, latent_size):
     noise = tf.random.normal([batch_size, latent_size])
-    noise_classes_cat = tf.random.uniform([batch_size], minval=1, maxval=data.CharacterClass.COUNT)
-    noise_classes_oh = tf.one_hot(noise_classes_cat, depth=data.CharacterClass.COUNT)
+    noise_classes_cat = tf.random.uniform([batch_size], minval=1, maxval=len(data.CharacterClass))
+    noise_classes_oh = tf.one_hot(noise_classes_cat, depth=len(data.CharacterClass))
 
     with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
         generated_images = generator([noise, noise_classes_oh], training=True)
@@ -70,7 +70,7 @@ def train(dataset, epochs, latent_size):
 
         bi = 0
         for metadata_batch, image_batch in dataset():                        
-            iamge_classes = tf.one_hot(metadata_batch['character_class'])
+            iamge_classes = tf.one_hot(metadata_batch['class'])
 
             gl, dl = train_step(image_batch, image_classes, image_batch.shape[0], latent_size)
 
@@ -106,14 +106,14 @@ if __name__ == "__main__":
     # We will reuse this seed overtime (so it's easier)
     # to visualize progress in the animated GIF)
     seed = tf.random.normal([num_examples_to_generate, latent_size])
-    seed_classes = tf.random.uniform([num_examples_to_generate], minval=1, maxval=data.CharacterClass.COUNT)
+    seed_classes = tf.random.uniform([num_examples_to_generate], minval=1, maxval=len(data.CharacterClass))
 
     generator, discriminator = model.build_gan(latent_size=latent_size)
 
     generator_optimizer = tf.keras.optimizers.Adam(1e-5)
     discriminator_optimizer = tf.keras.optimizers.Adam(1e-5)
 
-    checkpoint_dir = './chinese_output/'
+    checkpoint_dir = './data/chinese_class_output/'
     checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
     checkpoint = tf.train.Checkpoint(generator_optimizer=generator_optimizer,
                                     discriminator_optimizer=discriminator_optimizer,
