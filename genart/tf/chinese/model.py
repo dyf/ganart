@@ -3,6 +3,65 @@ from tensorflow.keras.layers import Conv2D, Dense, MaxPooling2D, BatchNormalizat
 from tensorflow.keras import Model
 from tensorflow.keras.models import Sequential
 
+def build_trad2simp(latent_size=100):
+    def enc_layer(N, k=(5,5), s=(2,2)):
+        return Sequential([
+            Conv2D(N, k, strides=s, padding='same'),
+            LeakyReLU(),
+            Dropout(0.3)
+        ])
+
+    def dec_layer(N, k=(5,5), s=(2,2)):
+        return Sequential([
+            Conv2DTranspose(N, k, strides=s, padding='same', use_bias=False),
+            BatchNormalization(),
+            LeakyReLU()
+        ])
+
+    input = Input(shape=(128,128,1))
+
+    e1 = enc_layer(64) # 64
+    e2 = enc_layer(64) # 32
+    e3 = enc_layer(128) # 16
+    e4 = enc_layer(256) # 8
+
+    latent_layer = Sequential([
+        Flatten(),
+        Dense(latent_size)
+    ])
+
+    dec_input_layer = Sequential([
+        Dense(8*8*256),
+        Reshape((8,8,256)),
+        Conv2DTranspose(256, (5,5), strides=(1,1), padding='same', use_bias=False),
+        BatchNormalization(),
+        LeakyReLU(),
+    ])
+    
+    d1 = dec_layer(128) # 16
+    d2 = dec_layer(64) # 32
+    d3 = dec_layer(64) # 64
+    out_layer = Conv2DTranspose(1, (5,5), strides=(2,2), padding='same', use_bias=False, activation='tanh') # 128
+
+    e1o = e1(input)
+    e2o = e2(e1o)
+    e3o = e3(e2o)
+    e4o = e4(e3o)
+    
+    lo = latent_layer(e4o)
+    di = dec_input_layer(lo)
+
+    d1o = d1(Concatenate()([e4o, di]))
+    d2o = d2(Concatenate()([e3o, d1o]))
+    d3o = d3(Concatenate()([e2o, d2o]))
+    output = out_layer(d3o)
+
+    return Model(input, output)
+
+
+
+
+
 
 def build_gan(latent_size=100):
 
@@ -128,11 +187,8 @@ if __name__ == "__main__":
     latent_size = 100
     num_fonts = 10
     
-    seed = tf.random.normal((batch_size,latent_size))
-    classes = tf.random.uniform((batch_size,), minval=0, maxval=3, dtype=tf.dtypes.int32)
-    fonts = tf.random.uniform((batch_size,), minval=0, maxval=num_fonts+1, dtype=tf.dtypes.int32)
-
-    gen, disc = build_class_gan(latent_size, num_fonts)
-    gpred = gen.predict([seed, tf.one_hot(classes, depth=3), tf.one_hot(fonts, depth=num_fonts+1)])
-    [dpred_ts, dpred_font] = disc.predict(gpred)
-    print(gpred.shape, dpred_ts.shape, dpred_font.shape)
+    seed = tf.random.normal((10,128,128,1))
+    model = build_trad2simp()
+    print(model.summary())
+    output = model.predict(seed)
+    print(output.shape)

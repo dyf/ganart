@@ -1,6 +1,6 @@
 import os, time
 import matplotlib.pyplot as plt
-
+import numpy as np
 import tensorflow as tf
 import genart.tf.chinese.data as data
 import genart.tf.chinese.model as model
@@ -33,9 +33,7 @@ def discriminator_loss(real_output, real_classes, real_fonts, fake_output):
     fake_font_oh = tf.one_hot(fake_font_cats, depth=len(all_fonts))
     fake_font_loss = categorical_cross_entropy(fake_font_oh, fake_font_output)
 
-    total_loss = real_class_loss + real_font_loss + fake_class_loss + fake_font_loss
-
-    return total_loss
+    return real_class_loss + real_font_loss, fake_class_loss + fake_font_loss
 
 @tf.function
 def train_step(images, image_classes, image_fonts, batch_size, latent_size):
@@ -51,8 +49,11 @@ def train_step(images, image_classes, image_fonts, batch_size, latent_size):
         real_output = discriminator(images, training=True)
         fake_output = discriminator(generated_images, training=True)
 
-        gen_loss = generator_loss(fake_output)
-        disc_loss = discriminator_loss(real_output, image_classes, image_fonts, fake_output)
+        #$gen_loss = generator_loss(fake_output)
+        disc_real_loss, disc_fake_loss = discriminator_loss(real_output, image_classes, image_fonts, fake_output)
+        
+        gen_loss = 1.0 / disc_fake_loss
+        disc_loss = disc_real_loss + disc_fake_loss
 
     gradients_of_generator = gen_tape.gradient(gen_loss, generator.trainable_variables)
     gradients_of_discriminator = disc_tape.gradient(disc_loss, discriminator.trainable_variables)
@@ -74,7 +75,7 @@ def generate_and_save_images(model, batch, epoch, test_input):
         plt.imshow(predictions[i, :, :, 0] * 127.5 + 127.5, cmap='gray')
         plt.axis('off')
 
-    fname = os.path.join(checkpoint_dir, 'image_batch_{:07d}_epoch_{:02d}.png'.format(batch, epoch))
+    fname = os.path.join(checkpoint_dir, f'image_epoch_{epoch:04d}.png')
     plt.savefig(fname)
     plt.close()
 
@@ -82,41 +83,34 @@ def train(dataset, epochs, latent_size):
     for epoch in range(epochs):
         start = time.time()
 
-        bi = 0
         for metadata_batch, image_batch in dataset():                        
             image_classes = tf.one_hot(metadata_batch['class_code'], depth=len(data.CharacterClass))
             image_fonts = tf.one_hot(metadata_batch['font_code'], depth=len(all_fonts))
 
-            gl, dl = train_step(image_batch, image_classes, image_fonts, image_batch.shape[0], latent_size)
-
-            if bi % 4000 == 0:
-                print(f'epoch({epoch}) batch({bi//1000}) genloss({gl}) discloss({dl})')
-                generate_and_save_images(generator,
-                                         bi + 1,
-                                         epoch + 1,
-                                         [seed, seed_classes, seed_fonts])
-
-            bi+=1
-
-        
+            gl, dl = train_step(image_batch, image_classes, image_fonts, image_batch.shape[0], latent_size)            
 
         # Save the model every epoch
         manager.save()
 
-        print ('Time for epoch {} is {} sec'.format(epoch + 1, time.time()-start))
+        print (f'Time for epoch {epoch+start_epoch}: {time.time()-start}s, genloss: {gl}, discloss: {dl}')
 
-    # Generate after the final epoch
-    generate_and_save_images(generator,
-                             0,
-                             epochs,
-                             [seed, seed_classes, seed_fonts])
+        generate_and_save_images(generator,
+                                 0,
+                                 epoch+start_epoch,
+                                 [seed, seed_classes, seed_fonts])
 
 
 if __name__ == "__main__":
     num_examples_to_generate = 16
     latent_size = 100
     batch_size = 20
-    num_epochs = 10
+    num_epochs = 1000
+    start_epoch = 1342
+
+    random_seed = 54321
+    tf.random.set_seed(random_seed)
+    np.random.seed(random_seed)
+
     
     df = data.load()       
     font_lut =  data.font_lut(df['font'])
@@ -150,4 +144,4 @@ if __name__ == "__main__":
     else:
         print("Initializing from scratch.")
 
-    train(lambda: data.iterdata(batch_size=batch_size), epochs=num_epochs, latent_size=latent_size)
+    train(lambda: data.iterdata(batch_size=batch_size, random_seed=random_seed), epochs=num_epochs, latent_size=latent_size)

@@ -196,15 +196,29 @@ def render_characters(chars, fonts, out_dir):
         
 
 if __name__ == "__main__":
-    fonts = list_available_font_ttfs()
-    df = load_variant_lookup()  
+    #fonts = list_available_font_ttfs()
+    #df = load_variant_lookup()  
     #trad_chars = set(df['traditional_char'].values.tolist())
     #simp_chars =  set(df['simplified_char'].values.tolist())
     #unique_chars =  trad_chars | simp_chars
     #render_characters(unique_chars, fonts, 'chinese/rendered')
 
-    file_index = build_index(df, fonts, RENDERED_IMAGE_DIR)
-    file_index.to_csv(DEFAULT_INDEX, index=False)
+    #file_index = build_index(df, fonts, RENDERED_IMAGE_DIR)
+    #file_index.to_csv(DEFAULT_INDEX, index=False)
+    import tensorflow as tf
+    df = load()       
+    font_lut =  font_lut(df['font'])
+    all_fonts = font_lut.values()
+
+    seed_fonts = tf.random.uniform([10], minval=1, maxval=len(all_fonts), dtype=tf.dtypes.int32)
+    seed_fonts = tf.one_hot(seed_fonts, depth=len(all_fonts))
+    print(seed_fonts)
+
+    
+    for md, images in iterdata(batch_size=2):
+        fonts = tf.one_hot(md['font_code'], depth=11)
+        print(fonts)
+        break
     
 
 
