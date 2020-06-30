@@ -11,6 +11,7 @@ import enum
 FONT_DIR = 'data/chinese/ttf'
 DEFAULT_INDEX = 'data/chinese/rendered_chinese_characters.csv'
 DEFAULT_VARIANT_LOOKUP_FILE = 'data/chinese/Unihan_Variants.txt'
+DEFAULT_VARIANT_IMAGE_FILE = 'data/chinese/rendered_variants.csv'
 RENDERED_IMAGE_DIR = 'data/chinese/rendered'
 
 @enum.unique
@@ -128,16 +129,57 @@ def iterdata(index_path=DEFAULT_INDEX, batch_size=10, shuffle=True, random_seed=
         images = images.reshape([s[0], s[1], s[2], 1])
         yield rows, images
 
-def iterdata_variants(image_index_path=DEFAULT_INDEX, variant_path=DEFAULT_VARIANT_LOOKUP_FILE, batch_size=10, shuffle=True, random_seed=None):
+def load_variant_images(image_index_path=DEFAULT_INDEX, variant_path=DEFAULT_VARIANT_LOOKUP_FILE):
     images = load(image_index_path)
     variants = load_variant_lookup(variant_path)
+    font_codes = images['font_code'].unique()    
+
+    out = []
+    for fc in font_codes:
+        for vi,v in variants.iterrows():
+            trad_image = images[(images['character']==v['traditional_char'])&(images['font_code']==fc)]
+            simp_image = images[(images['character']==v['simplified_char'])&(images['font_code']==fc)]
+            
+            try:
+                tf = trad_image['file'].values[0]
+                sf = simp_image['file'].values[0]
+            except IndexError:
+                print("skipping: ", v)
+                continue
+
+            out.append({
+                'font_code': fc,
+                'traditional_char': v['traditional_char'],
+                'simplified_char': v['simplified_char'],
+                'traditional_file': tf,
+                'simplified_file': sf
+            })
+            
+    return pd.DataFrame.from_records(out)
+
+
+def iterdata_variants(variant_image_path=DEFAULT_VARIANT_IMAGE_FILE, shuffle=True, random_seed=None, split_range=None):
+    df = pd.read_csv(variant_image_path)
+
+    if split_range is not None:
+        n = len(df)
+        idx_range = [ int(split_range[0]*n), int(split_range[1]*n) ]
+        df = df[idx_range[0]:idx_range[1]]
 
     if shuffle:
-        variants = variants.sample(frac=1)
+        df = df.sample(frac=1, random_state=random_seed)
+    
+    for idx,row in df.iterrows():
+        trad_image = imageio.imread(row['traditional_file'])
+        simp_image = imageio.imread(row['simplified_file'])
+        
+        trad_image = trad_image.astype(np.float32) / 255.0 * 2.0 - 1.0
+        simp_image = simp_image.astype(np.float32) / 255.0 * 2.0 - 1.0
+        
+        s = trad_image.shape
+        new_shape = [s[0], s[1],  1]        
 
-    for i in range(0, len(variants), batch_size):
-        pass
-
+        yield trad_image.reshape(new_shape), simp_image.reshape(new_shape)
 
 def list_available_font_ttfs(basedir=FONT_DIR):
     fonts = glob.glob(basedir + "/*.ttf")
@@ -205,21 +247,8 @@ if __name__ == "__main__":
 
     #file_index = build_index(df, fonts, RENDERED_IMAGE_DIR)
     #file_index.to_csv(DEFAULT_INDEX, index=False)
-    import tensorflow as tf
-    df = load()       
-    font_lut =  font_lut(df['font'])
-    all_fonts = font_lut.values()
-
-    seed_fonts = tf.random.uniform([10], minval=1, maxval=len(all_fonts), dtype=tf.dtypes.int32)
-    seed_fonts = tf.one_hot(seed_fonts, depth=len(all_fonts))
-    print(seed_fonts)
-
     
-    for md, images in iterdata(batch_size=2):
-        fonts = tf.one_hot(md['font_code'], depth=11)
-        print(fonts)
-        break
-    
-
-
+    df = load_variant_images()
+    df = df.sample(frac=1)
+    df.to_csv(DEFAULT_VARIANT_IMAGE_FILE, index=False)
     
