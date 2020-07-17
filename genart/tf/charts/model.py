@@ -87,7 +87,7 @@ class PCGANBuilder:
             #gen = gen_layer_tc(nf, name=f"gen_upconv_{i}")(gen)
             gen = gen_layer_bc(nf, name=f"gen_upconv_{i}")(gen)
             
-        gen = Conv2D(3, (1,1), padding='same', activation='tanh', name='gen_to_rgb')(gen) # 512
+        gen = Conv2D(3, (1,1), padding='same', activation='tanh', name=f'gen_to_rgb_level_{num_layers}')(gen) # 512
 
         return Model([labels_input, latent_input], gen)
 

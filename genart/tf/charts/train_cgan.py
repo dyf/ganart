@@ -76,7 +76,7 @@ def train(dataset, epochs, latent_size):
             labels_batch = md.reshape((len(md),1)).astype(float)
             gl, dl = train_step(image_batch, labels_batch, image_batch.shape[0], latent_size)
 
-            if bi % 300 == 0:
+            if bi % 1000 == 0:
                 print(f'epoch({epoch}) batch({bi}) genloss({gl}) discloss({dl})')
 
 
