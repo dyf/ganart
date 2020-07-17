@@ -44,7 +44,7 @@ class PCGANBuilder:
         self.max_shape = max_shape
         self.embedding_size = embedding_size
 
-        self.gen_layer_filters = [ 128, 128, 64, 64, 32, 32 ]        
+        self.gen_layer_filters = [ 128, 128, 64, 64, 32, 32 ]
         self.disc_layer_filters = self.gen_layer_filters[::-1]
 
         self.max_layers = len(self.gen_layer_filters)
@@ -107,16 +107,16 @@ class PCGANBuilder:
         disc = Concatenate(name=f'disc_incat_level_{num_layers}')([labels, image_input])
 
         for i in range(num_layers):
-            idx = num_layers - i - 1
+            idx = i + self.max_layers-num_layers#num_layers - i - 1
             
             if i == 0:            
-                name = f"disc_indownconv_level_{num_layers}"
+                name = f"disc_downconv_in_level_{num_layers}"
             else:
                 name = f"disc_downconv_{idx}"
                 
 
-            #disc = disc_layer_sc(self.disc_layer_filters[i], name=name)(disc)
-            disc = disc_layer_dpool(self.disc_layer_filters[i], name=name)(disc)
+            #disc = disc_layer_sc(self.disc_layer_filters[idx], name=name)(disc)
+            disc = disc_layer_dpool(self.disc_layer_filters[idx], name=name)(disc)
 
         disc = Sequential([
             Conv2D(256, (3, 3), strides=(1, 1), padding='same'),
@@ -196,7 +196,7 @@ def build_gan(latent_size=100):
     return generator, discriminator
 
 if __name__ == "__main__":
-    pcgan = PCGAN()
+    pcgan = PCGANBuilder()
 
-    gen, disc = pcgan.build_model(num_layers=1)
+    gen, disc = pcgan.build_model(num_layers=6)
     print(disc.summary())

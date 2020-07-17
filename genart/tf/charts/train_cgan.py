@@ -122,6 +122,8 @@ def restore_weights(num_layers, checkpoint_prefix, generator, discriminator):
 def copy_layer_weights(source_model, target_model):
     source_layer_dict = dict([(layer.name, layer) for layer in source_model.layers])
     target_layer_dict = dict([(layer.name, layer) for layer in target_model.layers])
+    print(source_model.summary())
+    print(target_model.summary())
 
     for name, source_layer in source_layer_dict.items():
         target_layer = target_layer_dict.get(name, None)
@@ -156,7 +158,7 @@ if __name__ == "__main__":
 
     generator, discriminator = builder.build_model(num_layers=num_layers)
     
-    generator_optimizer = tf.keras.optimizers.Adam(1e-5)
+    generator_optimizer = tf.keras.optimizers.Adam(2e-5)
     discriminator_optimizer = tf.keras.optimizers.Adam(1e-5)
 
     checkpoint_dir = f'./data/charts_output/layers_{num_layers}'
