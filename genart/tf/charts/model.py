@@ -1,17 +1,59 @@
 import tensorflow as tf
-from tensorflow.keras.layers import Conv2D, Dense, MaxPooling2D, BatchNormalization, ReLU, LeakyReLU, Dropout, Input, Activation, ZeroPadding2D, Concatenate, Flatten, Reshape, Conv2DTranspose, Embedding, UpSampling2D, AveragePooling2D
+from tensorflow.keras.layers import Layer, Conv2D, Dense, MaxPooling2D, BatchNormalization, ReLU, LeakyReLU, Dropout, Input, Activation, ZeroPadding2D, Concatenate, Flatten, Reshape, Conv2DTranspose, Embedding, UpSampling2D, AveragePooling2D, Add
 from tensorflow.keras import Model
 from tensorflow.keras.models import Sequential
 
-def gen_layer_bc(nf, k=(3,3), name=None):
+
+class WeightedSum(Add):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.alpha = tf.keras.backend.variable(0.0, name='weighted_sum_alpha')
+
+    def _merge_function(self, inputs):
+        return (1.0-self.alpha) * inputs[0] + self.alpha * inputs[1]
+
+class PixelNormalization(Layer):
+	# initialize the layer
+	def __init__(self, **kwargs):
+		super(PixelNormalization, self).__init__(**kwargs)
+ 
+	# perform the operation
+	def call(self, inputs):
+		# calculate square pixel values
+		values = inputs**2.0
+		# calculate the mean pixel values
+		mean_values = tf.keras.backend.mean(values, axis=-1, keepdims=True)
+		# ensure the mean is not zero
+		mean_values += 1.0e-8
+		# calculate the sqrt of the mean squared value (L2 norm)
+		l2 = tf.keras.backend.sqrt(mean_values)
+		# normalize values by the l2 norm
+		normalized = inputs / l2
+		return normalized
+ 
+	# define the output shape of the layer
+	def compute_output_shape(self, input_shape):
+		return input_shape
+
+def gen_conv_block(nf, name=None):
+     return Sequential([
+        Conv2D(nf, (3,3), strides=(1,1), padding='same'),
+        #BatchNormalization(),
+        PixelNormalization(),
+        LeakyReLU()                 
+     ], name=name)
+
+def disc_conv_block(nf, name=None):
+    return Sequential([
+        Conv2D(nf, (3,3), strides=(1,1), padding='same'),        
+        LeakyReLU()
+    ], name=name)
+
+def gen_layer_bc(nf, name=None):
     return Sequential([
         UpSampling2D(),
-        Conv2D(nf, k, strides=(1,1), padding='same'),
-        LeakyReLU(),
-        BatchNormalization(),
-        Conv2D(nf, k, strides=(1,1), padding='same'),
-        LeakyReLU(),
-        BatchNormalization(),
+        gen_conv_block(nf),
+        gen_conv_block(nf)
     ], name=name)
 
 def gen_layer_tc(nf, k=(5,5), strides=(2,2), name=None):
@@ -23,10 +65,8 @@ def gen_layer_tc(nf, k=(5,5), strides=(2,2), name=None):
 
 def disc_layer_dpool(nf, name=None):
     return Sequential([
-        Conv2D(nf, (3, 3), strides=(1, 1), padding='same'),
-        LeakyReLU(),
-        Conv2D(nf, (3, 3), strides=(1, 1), padding='same'),
-        LeakyReLU(),
+        disc_conv_block(nf),
+        disc_conv_block(nf),
         AveragePooling2D()
     ], name=name)
 
@@ -38,95 +78,133 @@ def disc_layer_sc(nf, name=None):
     ], name=name)
 
 class PCGANBuilder:
-    def __init__(self, latent_size=256, num_labels=3, max_shape=(512,512), embedding_size=10):
+    def __init__(self, latent_size=256, num_labels=8, max_shape=(512,512,3)):
         self.latent_size = latent_size
         self.num_labels = num_labels
         self.max_shape = max_shape
-        self.embedding_size = embedding_size
 
-        self.gen_layer_filters = [ 128, 128, 64, 64, 32, 32 ]
-        self.disc_layer_filters = self.gen_layer_filters[::-1]
-
-        self.max_layers = len(self.gen_layer_filters)
-
-    def build_model(self, num_layers=None):
-        if num_layers is None:
-            num_layers = self.max_layers
-
+    def build_model(self, layer_sizes=[70,60,50,40,30,20,10]):
         return ( 
-            self.build_generator(num_layers), 
-            self.build_discriminator(num_layers)
+            self.build_generator(layer_sizes), 
+            self.build_discriminator(layer_sizes[::-1])
         )
         
-    def build_generator(self, num_layers):            
-        factor = pow(2, self.max_layers)
-        image_shape = ( self.max_shape[0]//factor, self.max_shape[1]//factor, 1 )
-        
-        labels_input = Input(shape=(1,), name='gen_labels_input')
+    def build_generator(self, layer_sizes):        
+
+        num_models = len(layer_sizes)        
+
+        factor = pow(2, num_models-1)
+        image_shape = ( self.max_shape[0]//factor, self.max_shape[1]//factor, self.max_shape[2] )
+
+        labels_input = Input(shape=(self.num_labels,), name='gen_labels_input')
         
         labels = Sequential([
-            Embedding(self.num_labels, self.embedding_size),
             Dense(image_shape[0]*image_shape[1]),
-            Reshape(image_shape)
+            Reshape([image_shape[0], image_shape[1], 1])
         ], name='gen_labels_reshape')(labels_input)
 
         latent_input = Input(shape=(self.latent_size,), name='gen_latent_input')
-
         latent = Sequential([
-            Dense(image_shape[0]*image_shape[1]*256),
-            BatchNormalization(),
-            LeakyReLU(),
-            Reshape((image_shape[0],image_shape[1],256))
+                Dense(image_shape[0]*image_shape[1]*(layer_sizes[0]-1)),
+                BatchNormalization(),
+                LeakyReLU(),
+                Reshape((image_shape[0],image_shape[1],(layer_sizes[0]-1)))
         ], name='gen_latent_reshape')(latent_input)
 
-        gen_input = Concatenate()([labels, latent])
-
-        gen = gen_layer_tc(256, strides=(1,1), name='gen_conv_0')(gen_input)
+        gen = Concatenate()([labels, latent])
+        gen = gen_conv_block(layer_sizes[0], name='gen_conv_0')(gen)
         
-        for i,nf in enumerate(self.gen_layer_filters[:num_layers]):
-            #gen = gen_layer_tc(nf, name=f"gen_upconv_{i}")(gen)
-            gen = gen_layer_bc(nf, name=f"gen_upconv_{i}")(gen)
+        models = []
+        for mi in range(num_models):
+            mgen = gen
             
-        gen = Conv2D(3, (1,1), padding='same', activation='tanh', name=f'gen_to_rgb_level_{num_layers}')(gen) # 512
-
-        return Model([labels_input, latent_input], gen)
-
-    def build_discriminator(self, num_layers):    
-        factor = pow(2, self.max_layers - num_layers)
-        image_shape = ( self.max_shape[0]//factor, self.max_shape[1]//factor, 3 )
-        
-        labels_input = Input(shape=(1,), name=f'disc_labels_input_level_{num_layers}')
-        image_input = Input(shape=image_shape, name=f'disc_image_input_level_{num_layers}')
-
-        labels = Sequential([
-            Embedding(self.num_labels, self.embedding_size),
-            Dense(image_shape[0]*image_shape[1]),
-            Reshape((image_shape[0], image_shape[1],1))
-        ], name=f'disc_labels_reshape_level_{num_layers}')(labels_input)        
-
-        disc = Concatenate(name=f'disc_incat_level_{num_layers}')([labels, image_input])
-
-        for i in range(num_layers):
-            idx = i + self.max_layers-num_layers#num_layers - i - 1
+            prev_layers = build_layer_dict(models[-1]) if mi > 0 else {}
             
-            if i == 0:            
-                name = f"disc_downconv_in_level_{num_layers}"
-            else:
-                name = f"disc_downconv_{idx}"
+            prev_out = None
+
+            if mi > 0:
+                prev_layers_to_apply = [ f'gen_conv_{i}' for i in range(mi) ]
                 
+                for layer_name in prev_layers_to_apply:
+                    prev_layer = prev_layers[layer_name]
+                    mgen = prev_layer(mgen)
+                prev_out = mgen
+            
+            if mi > 0:                
+               mgen = gen_layer_bc(layer_sizes[mi], name=f"gen_conv_{mi}")(mgen)            
+            
+            mgen = Conv2D(3, (1,1), padding='same', activation='tanh', name=f'gen_to_rgb_level_{mi}')(mgen) # 512
 
-            #disc = disc_layer_sc(self.disc_layer_filters[idx], name=name)(disc)
-            disc = disc_layer_dpool(self.disc_layer_filters[idx], name=name)(disc)
+            if mi > 0:
+                upgen = Sequential([
+                    prev_layers[f'gen_to_rgb_level_{mi-1}'],
+                    UpSampling2D()
+                ], name=f'gen_upsample_level_{mi}')(prev_out)
 
-        disc = Sequential([
-            Conv2D(256, (3, 3), strides=(1, 1), padding='same'),
-            LeakyReLU(),
-            Flatten(),
-            Dense(1)
-        ], name='disc_out')(disc)
+                mgen = WeightedSum(name=f'gen_ws_level_{mi}')([upgen, mgen])
 
-        return Model([labels_input, image_input], disc)
+            model = Model([labels_input, latent_input], mgen)
+            models.append(model)
 
+            
+        return models
+
+    def build_discriminator(self, layer_sizes):
+        num_models = len(layer_sizes)
+
+        labels_input = Input(shape=(self.num_labels,), name=f'disc_labels_input')
+        image_inputs = []
+        models = []
+
+        for mi in range(num_models):    
+            fidx = -mi-1
+
+            factor = pow(2, num_models-mi-1)
+            image_shape = ( self.max_shape[0]//factor, self.max_shape[1]//factor, self.max_shape[2] )
+
+            image_input = Input(shape=image_shape, name=f'disc_image_input_level_{mi}')
+            image_inputs.append(image_input)
+                
+            labels_reshape = Sequential([
+                Dense(image_shape[0]*image_shape[1]),
+                Reshape((image_shape[0], image_shape[1],1))
+            ], name=f'disc_labels_reshape_level_{mi}')(labels_input)        
+
+            disc = Concatenate(name=f'disc_incat_level_{mi}')([labels_reshape, image_input])
+            disc = Sequential([
+                Conv2D(layer_sizes[fidx], (1,1), strides=(1,1), padding='same', ),
+                LeakyReLU()
+            ], name=f'disc_from_rgb_level_{mi}')(disc) 
+
+            if mi > 0:
+                new_disc = disc_layer_dpool(layer_sizes[fidx+1], name=f'disc_down_{mi}')(disc)
+                up_disc = Sequential([
+                    AveragePooling2D(),
+                    Conv2D(layer_sizes[fidx+1], (1,1), strides=(1,1)),
+                    LeakyReLU()
+                ], name=f'disc_pooldown_{mi}')(disc)
+
+                disc = WeightedSum(name=f'weighted_sum_level_{mi}')([up_disc, new_disc])
+                
+                prev_layers_to_apply = [ f'disc_down_{i}' for i in range(mi-1,-1,-1) ]
+                prev_layers = build_layer_dict(models[-1])
+
+                for layer_name in prev_layers_to_apply:
+                    prev_layer = prev_layers[layer_name]
+                    disc = prev_layer(disc)
+            else:
+                disc = Sequential([
+                    Flatten(),
+                    Dense(1)#, activation='sigmoid')
+                ], name=f'disc_down_{mi}')(disc)
+
+            model = Model([labels_input, image_input], disc, name=f'disc_{image_shape[0]}')
+            models.append(model)
+
+        return models
+
+def build_layer_dict(model):
+    return dict([(layer.name, layer) for layer in model.layers])
 
 def build_gan(latent_size=100):
 
@@ -198,5 +276,6 @@ def build_gan(latent_size=100):
 if __name__ == "__main__":
     pcgan = PCGANBuilder()
 
-    gen, disc = pcgan.build_model(num_layers=6)
-    print(disc.summary())
+    gen, disc = pcgan.build_model()
+    for g in gen:
+        print(g.summary())

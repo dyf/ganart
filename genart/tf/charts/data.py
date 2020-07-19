@@ -25,7 +25,7 @@ def iterdata(resolution, batch_size=10, h5_file=DEFAULT_H5_PATH, shuffle=True, r
         ds_name = RESOLUTIONS[resolution]
         num_images = hf[ds_name].shape[0]
 
-        num_batches = num_images // resolution
+        num_batches = num_images // batch_size
         inds = list(range(num_images))
         
         for i in range(num_batches):            
