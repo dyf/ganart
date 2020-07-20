@@ -8,6 +8,9 @@ import genart.tf.charts.data as mdata
 import genart.tf.charts.model as mmodel
 import genart.gen_charts as gc
 
+physical_devices = tf.config.list_physical_devices('GPU') 
+tf.config.experimental.set_memory_growth(physical_devices[0], True)
+
 checkpoint_dir = os.path.normpath(f'./data/charts_output/')
 cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 level = 0
@@ -35,7 +38,7 @@ def get_train_step_fn():
     @tf.function
     def train_step(images, labels, generator, discriminator, generator_optimizer, discriminator_optimizer, batch_size, latent_size):
         noise = tf.random.normal([batch_size, latent_size])
-        noise_labels = tf.random.uniform([batch_size,1], minval=0, maxval=len(gc.Chart)-1, dtype=tf.dtypes.int32)    
+        noise_labels = tf.one_hot(tf.random.uniform([batch_size], minval=0, maxval=len(gc.Chart)-1, dtype=tf.dtypes.int32), depth=len(gc.Chart))
 
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
             generated_images = generator([noise_labels, noise], training=True)
@@ -63,7 +66,7 @@ def generate_and_save_images(model, batch, epoch, test_input):
     fig = plt.figure(figsize=(12,12))
 
     for i in range(predictions.shape[0]):
-        plt.subplot(2, 2, i+1)
+        plt.subplot(3, 3, i+1)
         plt.imshow(tf.cast(predictions[i, :, :, :] * 127.5 + 127.5, tf.uint8))
         plt.axis('off')
 
@@ -85,12 +88,11 @@ def train(gen, disc, gen_opt, disc_opt, data, epochs, latent_size, fade_batches,
         start = time.time()
 
         bi = 0
-        for md, image_batch in data():
+        for labels_batch, image_batch in data():
             alpha = min(max(tbi / fade_batches, 0), 1.0)
 
             set_alpha([gen,disc], alpha)
-
-            labels_batch = md.reshape((len(md),1)).astype(float)
+            
             gl, dl = train_step(image_batch, labels_batch, 
                                 gen, disc, gen_opt, disc_opt,                                 
                                 image_batch.shape[0], latent_size)
@@ -133,13 +135,13 @@ def datagen(batch_size, random_seed, resolution):
 def main():
     global manager, level
 
-    num_examples_to_generate = 4
+    num_examples_to_generate = 8
     latent_size = 256
-    batch_size = 16
+    batch_size = 8
     num_epochs = 20
     start_epoch = 0
     layer_sizes = [128,128,128,128,128,128,128]
-    fade_batches = 1000
+    fade_batches = 6000
     level = 0
 
     random_seed = 123456
@@ -150,11 +152,11 @@ def main():
     # We will reuse this seed overtime (so it's easier)
     # to visualize progress in the animated GIF)
     seed_images = tf.random.normal([num_examples_to_generate, latent_size])
-    seed_labels =  np.array([[0,1,2,0]]).T
+    seed_labels =  tf.one_hot(np.arange(8).T, depth=8)
     seed = [seed_labels, seed_images]
 
     
-    builder = mmodel.PCGANBuilder(latent_size=latent_size, num_labels=3)
+    builder = mmodel.PCGANBuilder(latent_size=latent_size, num_labels=8)
 
     generators, discriminators = builder.build_model(layer_sizes=layer_sizes)
     

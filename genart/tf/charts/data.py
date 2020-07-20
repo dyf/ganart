@@ -34,7 +34,7 @@ def iterdata(resolution, batch_size=10, h5_file=DEFAULT_H5_PATH, shuffle=True, r
             else:
                 rows = slice(i*batch_size,(i+1)*batch_size)
 
-            yield hf['chart_idxs'][rows], (hf[ds_name][rows] - 127.5) / 127.5
+            yield hf['chart_types'][rows], (hf[ds_name][rows] - 127.5) / 127.5
 
 
 if __name__ == "__main__":
