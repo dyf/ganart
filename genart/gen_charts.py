@@ -235,10 +235,7 @@ def gen_images(N, out_dir, out_h5):
             chart = charts[i]
             CHART_GENERATORS[chart]()
 
-            fig = plt.gcf()
-            fig.canvas.draw()    
-            data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-            data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))                    
+            data = plt_to_array()
             
             for si, size in enumerate(sizes):
                 size_data = data
@@ -249,13 +246,84 @@ def gen_images(N, out_dir, out_h5):
 
             plt.close()
 
+def plt_to_array(fig=None):
+    if fig is None:
+        fig = plt.gcf()
+    fig.canvas.draw()    
+    data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+    data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    return data
+
+def random_multivariate_normal(num_rows, num_vars, max_range):
+    cov = sklearn.datasets.make_spd_matrix(num_vars) * (max_range[1]-max_range[0]) * 0.5
+    mean = np.random.uniform(low=max_range[0], high=max_range[1], size=num_vars)
+    return np.random.multivariate_normal(mean, cov, size=num_rows)
+
+
+def gen_basic_bars(N, file_name, data_max_range=[-1000, 1000], max_vars=6, max_rows=10000, num_bins=10):
+    data_range = np.sort(np.random.uniform(low=data_max_range[0], high=data_max_range[1], size=2))
+
+    out_x = np.zeros((N, num_bins))
+    out_y = np.zeros((N, num_bins))
+    out_ori = np.random.randint(low=0, high=2, size=N).astype(np.uint8)
+    out_color = np.random.random((N,3))
+
+    ori_lookup = {
+        0: 'horizontal',
+        1: 'vertical'
+    }
+    
+    with h5py.File(file_name, 'w') as hf:
+        hf.create_dataset('ori', data=out_ori)
+        hf.create_dataset('color', data=out_color)
+
+        out_x = hf.create_dataset('x', shape=(N, num_bins), dtype='float32')
+        out_y = hf.create_dataset('y', shape=(N, num_bins), dtype='float32')        
+        out_img = hf.create_dataset('chart', shape=(N, 256, 256, 3), dtype='uint8')
+
+        for ii in range(N):
+            if ii % 100 == 0:
+                print(f'{ii+1}/{N}')
+            num_vars = np.random.randint(low=1, high=max_vars+1)
+            num_rows = np.random.randint(low=1, high=max_rows+1)
+
+            data = random_multivariate_normal(num_rows, num_vars, data_range)
+            
+            fig, ax = plt.subplots(figsize=(2.56,2.56))
+            counts, bins, _ = ax.hist(data.flat, orientation=ori_lookup[out_ori[ii]], color=out_color[ii])
+            plt.tight_layout()
+            img = plt_to_array(fig)            
+            plt.close()
+            
+            out_y[ii] = counts
+            out_x[ii] = [ (bins[bi]+bins[bi+1])*0.5 for bi in range(len(bins)-1) ]
+            out_img[ii] = 255 
+            out_img[ii,:img.shape[0],:img.shape[1],:] = img
+
+
+def gen_basic_bars_async(args):    
+    i, n, fname = args    
+    print(i, n,fname)
+    np.random.seed(i)
+    gen_basic_bars(n, fname)
+
+if __name__ == "__main__":
+
+    import multiprocessing as mp
+
+    runs = [
+        [ 0, 1000, 'data/charts/bars_test_000.h5' ]
+    ] + [ 
+        [ (i+1)*1238746, 1000, f'data/charts/bars_train_{i:03}.h5'] for i in range(100) 
+    ]
         
 
-
-if __name__ == "__main__":    
+    with mp.Pool(10) as p:
+        p.map(gen_basic_bars_async, runs)
 
     
-    gen_images(75000, "data/charts", "data/charts/charts.h5")
+    #gen_basic_bars(100000, 'data/charts/bars_train.h5')
+    #gen_images(1000, "data/charts", "data/charts/charts_test.h5")
     #gen_stacked_bar(orientation='horizontal', categorical=False)    
     #gen_scatter()
     #gen_line(orientation='vertical')    
